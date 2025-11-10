@@ -649,7 +649,7 @@
 <body>
     <div id="nav-placeholder"></div>
 
-    <div class="main-container" style="grid-template-columns: 1fr; max-width: 1200px;">
+    <div class="main-container" style="grid-template-columns: 1fr; max-width: 1600px;">
         <main class="content-area">
             <div class="content-header">
                 <h2>
@@ -747,36 +747,40 @@
                 
                 console.log('Get Services Result:', result);
                 
-                if (result.success && result.output) {
-                    // Try to parse as JSON
-                    try {
-                        const servicesData = JSON.parse(result.output.trim());
-                        
-                        // New format: {"service-name": {...data...}}
-                        if (typeof servicesData === 'object' && !Array.isArray(servicesData)) {
-                            // Return array of objects with service data
-                            return Object.keys(servicesData).map(serviceName => ({
-                                serviceName: serviceName,
-                                statsData: servicesData[serviceName],
-                                success: true
-                            }));
-                        }
-                        
-                        // Old format: ["service1", "service2"]
-                        if (Array.isArray(servicesData)) {
-                            return servicesData;
-                        }
-                    } catch (e) {
-                        console.error('Error parsing services JSON:', e);
-                        // If not JSON, parse as lines
-                        const lines = result.output.trim().split('\n');
-                        const services = lines.filter(line => line.trim().length > 0);
-                        return services;
+                if (result.success) {
+                    // Check if services array exists
+                    if (result.services && Array.isArray(result.services)) {
+                        // Backend returns: [{name: "service", application: "App", path: "/path"}, ...]
+                        return result.services;
                     }
-                } else {
-                    addTerminalLine('Failed to get services: ' + (result.error || 'Unknown error'), 'error');
-                    return [];
+                    
+                    // If no services array, try to parse the output
+                    if (result.output) {
+                        try {
+                            const parsed = JSON.parse(result.output.trim());
+                            // If it's an object with service data
+                            if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+                                // Extract all services from the object
+                                const services = [];
+                                Object.keys(parsed).forEach(serviceName => {
+                                    const serviceData = parsed[serviceName];
+                                    services.push({
+                                        name: serviceName,
+                                        application: result.applications?.[0]?.name || 'Unknown',
+                                        path: result.applications?.[0]?.path || '',
+                                        statsData: serviceData // Include the full service data
+                                    });
+                                });
+                                return services;
+                            }
+                        } catch (e) {
+                            console.error('Error parsing services output:', e);
+                        }
+                    }
                 }
+                
+                addTerminalLine('Failed to get services: ' + (result.error || 'Unknown error'), 'error');
+                return [];
             } catch (error) {
                 console.error('Error fetching services:', error);
                 addTerminalLine('Network error fetching services: ' + error.message, 'error');
@@ -800,13 +804,13 @@
                     // Parse the JSON stats output
                     try {
                         const statsJson = JSON.parse(result.output.trim());
-                        // The stats JSON format is: {"service-name": {...stats...}}
-                        const serviceStats = statsJson[serviceName];
+                        // The stats JSON contains ALL services from the application
+                        // Format: {"service-name": {...stats...}, "service-name-2": {...stats...}}
                         
                         return {
                             serviceName: serviceName,
                             stats: result.output,
-                            statsData: serviceStats,
+                            statsData: statsJson, // Return entire stats object
                             success: true
                         };
                     } catch (e) {
@@ -815,7 +819,7 @@
                             serviceName: serviceName,
                             stats: result.output,
                             statsData: null,
-                            success: true
+                            success: false
                         };
                     }
                 } else {
@@ -838,6 +842,8 @@
         }
 
         function createServicesTable(servicesWithStats) {
+            console.log('Creating table with services:', servicesWithStats);
+            
             if (servicesWithStats.length === 0) {
                 servicesContainer.innerHTML = '<p style="color: #87ceeb; text-align: center; padding: 2rem;">No services found.</p>';
                 return;
@@ -849,12 +855,12 @@
                         <thead>
                             <tr style="background: rgba(0, 150, 255, 0.2); border-bottom: 2px solid rgba(0, 150, 255, 0.4);">
                                 <th style="padding: 1rem; text-align: left; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Service</th>
+                                <th style="padding: 1rem; text-align: left; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Server Name</th>
                                 <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Status</th>
+                                <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Port</th>
                                 <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Players</th>
                                 <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Memory</th>
                                 <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">CPU</th>
-                                <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Game PID</th>
-                                <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Service PID</th>
                                 <th style="padding: 1rem; text-align: center; color: #00d4ff; font-weight: 600; text-transform: uppercase; font-size: 0.9rem;">Actions</th>
                             </tr>
                         </thead>
@@ -862,21 +868,46 @@
             `;
 
             servicesWithStats.forEach((service, index) => {
-                const bgColor = index % 2 === 0 ? 'rgba(0, 40, 80, 0.2)' : 'rgba(0, 40, 80, 0.4)';
+                console.log(`Processing service ${index}:`, service);
                 
-                // Parse the stats JSON
+                const bgColor = index % 2 === 0 ? 'rgba(0, 40, 80, 0.2)' : 'rgba(0, 40, 80, 0.4)';
+                const serviceName = service.serviceName || service.name;
+                const appName = service.application || 'Unknown';
+                
+                // Parse the stats data
                 let parsedStats = null;
                 let statusColor = '#ef4444';
                 let statusIcon = 'fa-exclamation-circle';
                 let statusText = 'ERROR';
                 let serviceStatus = 'unknown';
+                let serviceId = serviceName; // service ID like "ark-extinction"
+                let serverName = serviceName; // Server name like "We Like Big booty latinas (Extinction)"
+                let port = '-';
+                let players = '-';
+                let memory = '-';
+                let cpu = '-';
                 
-                if (service.success && service.statsData) {
+                // Check if we have statsData
+                if (service.statsData) {
                     parsedStats = service.statsData;
                     serviceStatus = parsedStats.status || 'unknown';
                     statusColor = serviceStatus === 'running' ? '#22c55e' : '#ef4444';
                     statusIcon = serviceStatus === 'running' ? 'fa-check-circle' : 'fa-times-circle';
                     statusText = serviceStatus.toUpperCase();
+                    
+                    // Extract data from stats
+                    serviceId = parsedStats.service || serviceName; // The service ID
+                    serverName = parsedStats.name || serviceName; // The display name
+                    port = parsedStats.port || '-';
+                    players = parsedStats.player_count !== null && parsedStats.player_count !== undefined 
+                        ? `${parsedStats.player_count}/${parsedStats.max_players}` 
+                        : '-';
+                    memory = parsedStats.memory_usage || '-';
+                    cpu = parsedStats.cpu_usage || '-';
+                    
+                    console.log(`Service ${serviceName} stats:`, parsedStats);
+                } else {
+                    console.warn(`Service ${serviceName} has no statsData`);
                 }
 
                 // Determine which buttons to show based on status
@@ -890,7 +921,7 @@
                 // Show Start button only if NOT running
                 if (!isRunning) {
                     actionButtons += `
-                        <button onclick="serviceAction('${service.serviceName}', 'start')" 
+                        <button onclick="serviceAction('${serviceName}', 'start')" 
                             style="padding: 0.4rem 0.8rem; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); border: none; border-radius: 5px; color: white; cursor: pointer; font-weight: 500; font-size: 0.85rem; transition: all 0.3s; box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);"
                             onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 8px rgba(34, 197, 94, 0.4)';"
                             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(34, 197, 94, 0.3)';">
@@ -902,7 +933,7 @@
                 // Show Stop button only if NOT stopped/offline
                 if (!isStopped) {
                     actionButtons += `
-                        <button onclick="serviceAction('${service.serviceName}', 'stop')" 
+                        <button onclick="serviceAction('${serviceName}', 'stop')" 
                             style="padding: 0.4rem 0.8rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; border-radius: 5px; color: white; cursor: pointer; font-weight: 500; font-size: 0.85rem; transition: all 0.3s; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);"
                             onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.4)';"
                             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.3)';">
@@ -914,7 +945,7 @@
                 // Show Restart button only if NOT already restarting
                 if (!isRestarting) {
                     actionButtons += `
-                        <button onclick="serviceAction('${service.serviceName}', 'restart')" 
+                        <button onclick="serviceAction('${serviceName}', 'restart')" 
                             style="padding: 0.4rem 0.8rem; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); border: none; border-radius: 5px; color: white; cursor: pointer; font-weight: 500; font-size: 0.85rem; transition: all 0.3s; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);"
                             onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 8px rgba(245, 158, 11, 0.4)';"
                             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(245, 158, 11, 0.3)';">
@@ -925,18 +956,18 @@
 
                 tableHTML += `
                     <tr style="background: ${bgColor}; border-bottom: 1px solid rgba(0, 150, 255, 0.1); transition: background 0.3s;">
-                        <td style="padding: 1rem; color: #87ceeb; font-weight: 500;">${service.serviceName}</td>
+                        <td style="padding: 1rem; color: #00d4ff; font-family: 'Monaco', monospace; font-size: 0.85rem;">${serviceId}</td>
+                        <td style="padding: 1rem; color: #87ceeb; font-weight: 500;">${serverName}</td>
                         <td style="padding: 1rem; text-align: center;">
                             <span style="display: inline-flex; align-items: center; gap: 0.5rem; color: ${statusColor}; font-weight: 600;">
                                 <i class="fas ${statusIcon}"></i>
                                 ${statusText}
                             </span>
                         </td>
-                        <td style="padding: 1rem; text-align: center; color: #e2e8f0;">${parsedStats ? parsedStats.player_count : '-'}</td>
-                        <td style="padding: 1rem; text-align: center; color: #e2e8f0;">${parsedStats ? parsedStats.memory_usage : '-'}</td>
-                        <td style="padding: 1rem; text-align: center; color: #e2e8f0;">${parsedStats ? parsedStats.cpu_usage : '-'}</td>
-                        <td style="padding: 1rem; text-align: center; color: #e2e8f0; font-family: 'Monaco', monospace; font-size: 0.85rem;">${parsedStats ? parsedStats.game_pid : '-'}</td>
-                        <td style="padding: 1rem; text-align: center; color: #e2e8f0; font-family: 'Monaco', monospace; font-size: 0.85rem;">${parsedStats ? parsedStats.service_pid : '-'}</td>
+                        <td style="padding: 1rem; text-align: center; color: #e2e8f0; font-family: 'Monaco', monospace; font-size: 0.9rem;">${port}</td>
+                        <td style="padding: 1rem; text-align: center; color: #e2e8f0;">${players}</td>
+                        <td style="padding: 1rem; text-align: center; color: #e2e8f0;">${memory}</td>
+                        <td style="padding: 1rem; text-align: center; color: #e2e8f0;">${cpu}</td>
                         <td style="padding: 1rem; text-align: center;">
                             <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
                                 ${actionButtons}
@@ -966,6 +997,8 @@
             // Step 1: Get all services
             const services = await fetchServices();
             
+            console.log('Fetched services:', services);
+            
             if (services.length === 0) {
                 setLoadingStatus('No services found');
                 servicesContainer.innerHTML = '<p style="color: #87ceeb; text-align: center; padding: 2rem;">No services available.</p>';
@@ -977,35 +1010,48 @@
 
             addTerminalLine(`Found ${services.length} service(s)`, 'success');
 
-            // Step 2: Check if services already have stats (new format) or need to fetch them (old format)
-            let servicesWithStats = [];
-            
-            // Check if first service already has statsData
-            if (services[0].statsData) {
-                // New format: services already have their stats
-                addTerminalLine('Services loaded with stats', 'success');
-                servicesWithStats = services;
-            } else {
-                // Old format: need to fetch stats for each service
-                setLoadingStatus(`Loading stats for ${services.length} service(s)...`);
-                
-                for (let i = 0; i < services.length; i++) {
-                    const serviceName = services[i];
-                    addTerminalLine(`Fetching stats for: ${serviceName}`, 'info');
-                    setLoadingStatus(`Loading stats (${i + 1}/${services.length})...`);
-                    
-                    const stats = await fetchStatsForService(serviceName);
-                    servicesWithStats.push(stats);
-                    
-                    if (stats.success) {
-                        addTerminalLine(`✓ Stats loaded for ${serviceName}`, 'success');
-                    } else {
-                        addTerminalLine(`✗ Failed to load stats for ${serviceName}`, 'error');
-                    }
+            // Step 2: Check if services already have data embedded
+            let servicesWithStats = services.map(service => {
+                // Check if service has the full data fields
+                if (service.service || service.serverName || service.status) {
+                    // Service has full data from --get-services
+                    return {
+                        serviceName: service.name,
+                        name: service.name,
+                        application: service.application,
+                        path: service.path,
+                        statsData: {
+                            service: service.service || service.name,
+                            name: service.serverName || service.name,
+                            ip: service.ip,
+                            port: service.port,
+                            status: service.status,
+                            player_count: service.player_count,
+                            max_players: service.max_players,
+                            memory_usage: service.memory_usage,
+                            cpu_usage: service.cpu_usage,
+                            game_pid: service.game_pid,
+                            service_pid: service.service_pid
+                        },
+                        success: true
+                    };
+                } else {
+                    // Service only has name, no stats
+                    return {
+                        serviceName: service.name,
+                        name: service.name,
+                        application: service.application,
+                        path: service.path,
+                        statsData: null,
+                        success: false
+                    };
                 }
-            }
+            });
 
             // Step 3: Create and display the table
+            console.log('Final servicesWithStats:', servicesWithStats);
+            console.log(`Total services to display: ${servicesWithStats.length}`);
+            
             createServicesTable(servicesWithStats);
             servicesData = servicesWithStats;
 

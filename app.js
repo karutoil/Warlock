@@ -203,59 +203,282 @@ app.post('/player-management', createCommandEndpoint('player-management'));
 app.post('/server-monitor', createCommandEndpoint('server-monitor'));
 app.post('/backup-restore', createCommandEndpoint('backup-restore'));
 
-// Get services endpoint
-app.post('/get-services', (req, res) => {
-    const sshCommand = buildSSHCommand('/home/steam/VEIN/manage.py --get-services');
-    
-    console.log('Executing get-services command:', sshCommand);
-    
-    exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error('Get services error:', error);
+// Helper function to get all applications and their paths
+async function getAllApplications() {
+    return new Promise((resolve, reject) => {
+        const sshCommand = buildSSHCommand('for file in /var/lib/warlock/*.app; do if [ -f "$file" ]; then echo "===FILE:$(basename "$file")"; cat "$file"; echo ""; echo "===END"; fi; done');
+        
+        exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
+            if (error) {
+                console.error('Get applications error:', error);
+                return reject(error);
+            }
+            
+            const applications = [];
+            const lines = stdout.split('\n');
+            let currentApp = null;
+            let collectingPath = false;
+            
+            for (let line of lines) {
+                const trimmedLine = line.trim();
+                
+                if (trimmedLine.startsWith('===FILE:')) {
+                    if (currentApp && currentApp.path) {
+                        applications.push(currentApp);
+                    }
+                    const fileName = trimmedLine.substring(8).trim();
+                    const appName = fileName.replace('.app', '');
+                    currentApp = { name: appName, fileName: fileName, path: '' };
+                    collectingPath = true;
+                } else if (trimmedLine === '===END') {
+                    if (currentApp && currentApp.path) {
+                        applications.push(currentApp);
+                    }
+                    currentApp = null;
+                    collectingPath = false;
+                } else if (collectingPath && trimmedLine && trimmedLine !== '===END') {
+                    if (!currentApp.path) {
+                        currentApp.path = trimmedLine;
+                    }
+                }
+            }
+            
+            resolve(applications);
+        });
+    });
+}
+
+// Get services endpoint - now queries all applications
+app.post('/get-services', async (req, res) => {
+    try {
+        const applications = await getAllApplications();
+        
+        if (applications.length === 0) {
             return res.json({
                 success: false,
-                error: error.message,
-                output: stderr || stdout
+                error: 'No applications found',
+                output: '',
+                services: []
             });
         }
         
-        console.log('Services output:', stdout);
+        // Query all applications for their services
+        const allServices = [];
+        const errors = [];
+        
+        for (const app of applications) {
+            const managePyPath = `${app.path}/manage.py`;
+            const sshCommand = buildSSHCommand(`${managePyPath} --get-services`);
+            
+            console.log(`Executing get-services for ${app.name}:`, sshCommand);
+            
+            await new Promise((resolve) => {
+                exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
+                    if (error) {
+                        console.error(`Get services error for ${app.name}:`, error);
+                        errors.push({ app: app.name, error: error.message });
+                        resolve();
+                        return;
+                    }
+                    
+                    console.log(`Services output for ${app.name}:`, stdout);
+                    
+                    // Try to parse as JSON first (new format returns service data)
+                    try {
+                        const trimmedOutput = stdout.trim();
+                        
+                        // Check if output is JSON
+                        if (trimmedOutput.startsWith('[') || trimmedOutput.startsWith('{')) {
+                            const parsed = JSON.parse(trimmedOutput);
+                            
+                            // If it's an array of service names
+                            if (Array.isArray(parsed)) {
+                                const services = parsed.map(serviceName => ({
+                                        name: serviceName,
+                                        application: app.name,
+                                        path: app.path,
+                                        // Include all service details
+                                        service: serviceData.service || serviceName,
+                                        serverName: serviceData.name || serviceName,
+                                        ip: serviceData.ip,
+                                        port: serviceData.port,
+                                        status: serviceData.status,
+                                        player_count: serviceData.player_count,
+                                        max_players: serviceData.max_players,
+                                        memory_usage: serviceData.memory_usage,
+                                        cpu_usage: serviceData.cpu_usage,
+                                        game_pid: serviceData.game_pid,
+                                        service_pid: serviceData.service_pid
+                                }));
+                                allServices.push(...services);
+                            }
+                            // If it's an object with service keys (like {"ark-extinction": {...}, "ark-island": {...}})
+                            else if (typeof parsed === 'object') {
+                                const services = Object.keys(parsed).map(serviceName => {
+                                    const serviceData = parsed[serviceName];
+                                    // Extract all fields from the service data
+                                    return {
+                                        name: serviceName,
+                                        application: app.name,
+                                        path: app.path,
+                                        // Include all service details
+                                        service: serviceData.service || serviceName,
+                                        serverName: serviceData.name || serviceName,
+                                        ip: serviceData.ip,
+                                        port: serviceData.port,
+                                        status: serviceData.status,
+                                        player_count: serviceData.player_count,
+                                        max_players: serviceData.max_players,
+                                        memory_usage: serviceData.memory_usage,
+                                        cpu_usage: serviceData.cpu_usage,
+                                        game_pid: serviceData.game_pid,
+                                        service_pid: serviceData.service_pid
+                                    };
+                                });
+                                console.log(`Extracted ${services.length} services from object for ${app.name}:`, services);
+                                allServices.push(...services);
+                            }
+                        } else {
+                            // Fallback: Parse as line-separated service names
+                            const services = stdout.split('\n')
+                                .filter(line => line.trim())
+                                .map(service => ({
+                                    name: service.trim(),
+                                    application: app.name,
+                                    path: app.path
+                                }));
+                            allServices.push(...services);
+                        }
+                    } catch (e) {
+                        console.error(`Error parsing services for ${app.name}:`, e);
+                        // Fallback: Parse as line-separated service names
+                        const services = stdout.split('\n')
+                            .filter(line => line.trim())
+                            .map(service => ({
+                                name: service.trim(),
+                                application: app.name,
+                                path: app.path
+                            }));
+                        allServices.push(...services);
+                    }
+                    
+                    resolve();
+                });
+            });
+        }
+        
+        console.log(`Total services collected: ${allServices.length}`);
+        console.log('All services:', JSON.stringify(allServices, null, 2));
         
         res.json({
             success: true,
-            output: stdout,
-            stderr: stderr
+            services: allServices,
+            applications: applications,
+            errors: errors.length > 0 ? errors : undefined,
+            output: `Found ${allServices.length} services across ${applications.length} applications`
         });
-    });
+        
+    } catch (error) {
+        console.error('Get services error:', error);
+        res.json({
+            success: false,
+            error: error.message,
+            output: '',
+            services: []
+        });
+    }
 });
 
-// Get stats endpoint
-app.post('/get-stats', (req, res) => {
-    const serviceName = req.body.service || '';
-    const sshCommand = serviceName 
-        ? buildSSHCommand(`/home/steam/VEIN/manage.py --get-stats --service ${serviceName}`)
-        : buildSSHCommand('/home/steam/VEIN/manage.py --get-stats');
-    
-    console.log('Executing get-stats command:', sshCommand);
-    
-    exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error('Get stats error:', error);
+// Get stats endpoint - now queries all applications
+app.post('/get-stats', async (req, res) => {
+    try {
+        const serviceName = req.body.service || '';
+        const applications = await getAllApplications();
+        
+        if (applications.length === 0) {
             return res.json({
                 success: false,
-                error: error.message,
-                output: stderr || stdout
+                error: 'No applications found',
+                output: ''
             });
         }
         
-        console.log('Stats output:', stdout);
+        // If specific service requested, find which app it belongs to
+        if (serviceName) {
+            let foundStats = null;
+            
+            for (const app of applications) {
+                const managePyPath = `${app.path}/manage.py`;
+                const sshCommand = buildSSHCommand(`${managePyPath} --get-stats --service ${serviceName}`);
+                
+                console.log(`Checking ${app.name} for service ${serviceName}:`, sshCommand);
+                
+                await new Promise((resolve) => {
+                    exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
+                        if (!error && stdout && !stdout.includes('not found') && !stdout.includes('error')) {
+                            foundStats = {
+                                success: true,
+                                output: stdout,
+                                stderr: stderr,
+                                application: app.name,
+                                path: app.path
+                            };
+                        }
+                        resolve();
+                    });
+                });
+                
+                if (foundStats) break;
+            }
+            
+            if (foundStats) {
+                return res.json(foundStats);
+            } else {
+                return res.json({
+                    success: false,
+                    error: `Service '${serviceName}' not found in any application`,
+                    output: ''
+                });
+            }
+        }
+        
+        // Get stats from all applications
+        const allStats = [];
+        
+        for (const app of applications) {
+            const managePyPath = `${app.path}/manage.py`;
+            const sshCommand = buildSSHCommand(`${managePyPath} --get-stats`);
+            
+            console.log(`Executing get-stats for ${app.name}:`, sshCommand);
+            
+            await new Promise((resolve) => {
+                exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
+                    if (!error && stdout) {
+                        allStats.push({
+                            application: app.name,
+                            path: app.path,
+                            stats: stdout
+                        });
+                    }
+                    resolve();
+                });
+            });
+        }
         
         res.json({
             success: true,
-            output: stdout,
-            stderr: stderr
+            output: allStats.map(s => `=== ${s.application} ===\n${s.stats}`).join('\n\n'),
+            stats: allStats
         });
-    });
+        
+    } catch (error) {
+        console.error('Get stats error:', error);
+        res.json({
+            success: false,
+            error: error.message,
+            output: ''
+        });
+    }
 });
 
 // Get applications from .app files in /var/lib/warlock
@@ -323,8 +546,8 @@ app.post('/get-applications', (req, res) => {
     });
 });
 
-// Service control endpoint (start/stop/restart)
-app.post('/service-action', (req, res) => {
+// Service control endpoint (start/stop/restart) - now works with all applications dynamically
+app.post('/service-action', async (req, res) => {
     const { service, action } = req.body;
     
     if (!service || !action) {
@@ -342,28 +565,62 @@ app.post('/service-action', (req, res) => {
         });
     }
     
-    const sshCommand = buildSSHCommand(`/home/steam/VEIN/manage.py --${action} --service ${service}`);
-    
-    console.log(`Executing ${action} command for ${service}:`, sshCommand);
-    
-    exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error(`${action} error for ${service}:`, error);
+    try {
+        const applications = await getAllApplications();
+        
+        if (applications.length === 0) {
             return res.json({
                 success: false,
-                error: error.message,
-                output: stderr || stdout
+                error: 'No applications found'
             });
         }
         
-        console.log(`${action} output for ${service}:`, stdout);
+        // Try to find and execute the service in each application
+        let serviceFound = false;
+        let result = null;
         
+        for (const app of applications) {
+            const managePyPath = `${app.path}/manage.py`;
+            const sshCommand = buildSSHCommand(`${managePyPath} --${action} --service ${service}`);
+            
+            console.log(`Trying ${action} for ${service} in ${app.name}:`, sshCommand);
+            
+            await new Promise((resolve) => {
+                exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
+                    if (!error || (stdout && !stdout.toLowerCase().includes('not found'))) {
+                        serviceFound = true;
+                        result = {
+                            success: !error,
+                            application: app.name,
+                            path: app.path,
+                            output: stdout,
+                            stderr: stderr,
+                            error: error ? error.message : undefined
+                        };
+                    }
+                    resolve();
+                });
+            });
+            
+            if (serviceFound) break;
+        }
+        
+        if (!serviceFound) {
+            return res.json({
+                success: false,
+                error: `Service '${service}' not found in any application`
+            });
+        }
+        
+        res.json(result);
+        
+    } catch (error) {
+        console.error(`Service control error:`, error);
         res.json({
-            success: true,
-            output: stdout,
-            stderr: stderr
+            success: false,
+            error: error.message
         });
-    });
+    }
 });
 
 // Legacy endpoint for backward compatibility
@@ -623,9 +880,14 @@ app.post('/view-file', (req, res) => {
             });
         }
         
-        // Check if file appears to be binary (but allow Python script files)
-        const isPythonScript = fileType.includes('Python script') || fileType.includes('python');
-        if (!isPythonScript && (fileType.includes('binary') || fileType.includes('executable'))) {
+        // Check if file appears to be binary (but allow text-based script files)
+        const isPythonScript = filePath.endsWith('.py') || fileType.includes('Python script') || fileType.includes('python');
+        const isTextFile = filePath.endsWith('.txt') || filePath.endsWith('.log') || filePath.endsWith('.conf') || 
+                          filePath.endsWith('.json') || filePath.endsWith('.xml') || filePath.endsWith('.yml') || 
+                          filePath.endsWith('.yaml') || filePath.endsWith('.sh') || filePath.endsWith('.md') ||
+                          fileType.includes('text') || fileType.includes('ASCII');
+        
+        if (!isPythonScript && !isTextFile && (fileType.includes('binary') || fileType.includes('executable'))) {
             return res.json({
                 success: false,
                 error: 'Binary files cannot be previewed'
