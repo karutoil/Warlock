@@ -41,7 +41,7 @@ const getSSHHosts = () => {
  * Generate an SSH command string to run a remote or local command
  * @param target
  * @param remoteCommand
- * @returns {`ssh root@${*} '${string}'`|`ssh ${*}@${*} '${string}'`}
+ * @returns {string}
  */
 const buildSSHCommand = (target, remoteCommand) => {
     const hosts = getSSHHosts();
@@ -60,10 +60,10 @@ const buildSSHCommand = (target, remoteCommand) => {
 /**
  * Run a command via SSH on the target host
  *
- * @param target
- * @param cmd
- * @param extraFields
- * @returns {Promise<unknown>}
+ * @param target {string}
+ * @param cmd {string}
+ * @param extraFields {*}
+ * @returns {Promise<{stdout: string, stderr: string, extraFields: *}>}
  */
 async function cmdRunner(target, cmd, extraFields = {}) {
     return new Promise((resolve, reject) => {
@@ -384,6 +384,13 @@ app.post('/get-services', async (req, res) => {
                 output: '',
                 services: services
             });
+        })
+        .catch(e => {
+            return res.json({
+                success: false,
+                error: e.message,
+                services: []
+            });
         });
 });
 
@@ -499,7 +506,7 @@ app.post('/get-applications', (req, res) => {
 
 // Service control endpoint (start/stop/restart) - now works with all applications dynamically
 app.post('/service-action', async (req, res) => {
-    const { service, action } = req.body;
+    const { host, service, action } = req.body;
     
     if (!service || !action) {
         return res.json({
@@ -515,63 +522,22 @@ app.post('/service-action', async (req, res) => {
             error: `Invalid action. Must be one of: ${validActions.join(', ')}`
         });
     }
-    
-    try {
-        const applications = await getAllApplications();
-        
-        if (applications.length === 0) {
+
+    cmdRunner(host, `systemctl ${action} ${service}`)
+        .then(result => {
+            return res.json({
+                success: true,
+                output: result.stdout,
+                stderr: result.stderr
+            });
+        })
+        .catch(e => {
             return res.json({
                 success: false,
-                error: 'No applications found'
+                error: e.message
             });
-        }
-        
-        // Try to find and execute the service in each application
-        let serviceFound = false;
-        let result = null;
-        
-        for (const app of applications) {
-            const managePyPath = `${app.path}/manage.py`;
-            const sshCommand = buildSSHCommand(`${managePyPath} --${action} --service ${service}`);
-            
-            console.log(`Trying ${action} for ${service} in ${app.name}:`, sshCommand);
-            
-            await new Promise((resolve) => {
-                exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-                    if (!error || (stdout && !stdout.toLowerCase().includes('not found'))) {
-                        serviceFound = true;
-                        result = {
-                            success: !error,
-                            application: app.name,
-                            path: app.path,
-                            output: stdout,
-                            stderr: stderr,
-                            error: error ? error.message : undefined
-                        };
-                    }
-                    resolve();
-                });
-            });
-            
-            if (serviceFound) break;
-        }
-        
-        if (!serviceFound) {
-            return res.json({
-                success: false,
-                error: `Service '${service}' not found in any application`
-            });
-        }
-        
-        res.json(result);
-        
-    } catch (error) {
-        console.error(`Service control error:`, error);
-        res.json({
-            success: false,
-            error: error.message
-        });
-    }
+        })
+
 });
 
 // Legacy endpoint for backward compatibility
