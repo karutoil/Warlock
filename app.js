@@ -57,7 +57,15 @@ const buildSSHCommand = (target, remoteCommand) => {
     }
 };
 
-async function cmdRunner(target, cmd) {
+/**
+ * Run a command via SSH on the target host
+ *
+ * @param target
+ * @param cmd
+ * @param extraFields
+ * @returns {Promise<unknown>}
+ */
+async function cmdRunner(target, cmd, extraFields = {}) {
     return new Promise((resolve, reject) => {
         const sshCommand = buildSSHCommand(target, cmd);
 
@@ -69,7 +77,7 @@ async function cmdRunner(target, cmd) {
             }
 
             console.debug('cmdRunner:', stdout);
-            resolve({ stdout, stderr });
+            resolve({ stdout, stderr, extraFields });
         });
     });
 }
@@ -138,6 +146,57 @@ async function getAllApplications() {
 
                 return resolve(applications);
             });
+    });
+}
+
+/**
+ * Get all services from all applications across all hosts
+ *
+ * @returns {Promise<void>}
+ */
+async function getAllServices() {
+    return new Promise((resolve, reject) => {
+        getAllApplications()
+            .then(results => {
+                let allLookups = [],
+                    services = [];
+
+                for (let guid in results) {
+                    let app = results[guid];
+                    for (let hostData of app.hosts) {
+                        const cmd = `${hostData.path}/manage.py --get-services`;
+                        allLookups.push(
+                            cmdRunner(
+                                hostData.host,
+                                cmd,
+                                {
+                                    host: hostData.host,
+                                    app_guid: guid,
+                                    app_name: app.title,
+                                    app_path: hostData.path
+                                }
+                            )
+                        );
+                    }
+                }
+
+                Promise.allSettled(allLookups)
+                    .then(serviceResults => {
+                        serviceResults.forEach(result => {
+                            console.debug(result);
+                            if (result.status === 'fulfilled') {
+                                let appServices = JSON.parse(result.value.stdout);
+                                for (let svc of Object.values(appServices)) {
+                                    // Merge extra fields into service data
+                                    let res = Object.assign({}, svc, result.value.extraFields);
+                                    services.push(res);
+                                }
+                            }
+                        });
+
+                        resolve(services);
+                    });
+            })
     });
 }
 
@@ -318,143 +377,14 @@ app.post('/backup-restore', createCommandEndpoint('backup-restore'));
 
 // Get services endpoint - now queries all applications
 app.post('/get-services', async (req, res) => {
-    try {
-        const applications = await getAllApplications();
-        
-        if (applications.length === 0) {
+    getAllServices()
+        .then((services) => {
             return res.json({
-                success: false,
-                error: 'No applications found',
+                success: true,
                 output: '',
-                services: []
+                services: services
             });
-        }
-        
-        // Query all applications for their services
-        const allServices = [];
-        const errors = [];
-        
-        for (const app of applications) {
-            const managePyPath = `${app.path}/manage.py`;
-            const sshCommand = buildSSHCommand(`${managePyPath} --get-services`);
-            
-            console.log(`Executing get-services for ${app.name}:`, sshCommand);
-            
-            await new Promise((resolve) => {
-                exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-                    if (error) {
-                        console.error(`Get services error for ${app.name}:`, error);
-                        errors.push({ app: app.name, error: error.message });
-                        resolve();
-                        return;
-                    }
-                    
-                    console.log(`Services output for ${app.name}:`, stdout);
-                    
-                    // Try to parse as JSON first (new format returns service data)
-                    try {
-                        const trimmedOutput = stdout.trim();
-                        
-                        // Check if output is JSON
-                        if (trimmedOutput.startsWith('[') || trimmedOutput.startsWith('{')) {
-                            const parsed = JSON.parse(trimmedOutput);
-                            
-                            // If it's an array of service names
-                            if (Array.isArray(parsed)) {
-                                const services = parsed.map(serviceName => ({
-                                        name: serviceName,
-                                        application: app.name,
-                                        path: app.path,
-                                        // Include all service details
-                                        service: serviceData.service || serviceName,
-                                        serverName: serviceData.name || serviceName,
-                                        ip: serviceData.ip,
-                                        port: serviceData.port,
-                                        status: serviceData.status,
-                                        player_count: serviceData.player_count,
-                                        max_players: serviceData.max_players,
-                                        memory_usage: serviceData.memory_usage,
-                                        cpu_usage: serviceData.cpu_usage,
-                                        game_pid: serviceData.game_pid,
-                                        service_pid: serviceData.service_pid
-                                }));
-                                allServices.push(...services);
-                            }
-                            // If it's an object with service keys (like {"ark-extinction": {...}, "ark-island": {...}})
-                            else if (typeof parsed === 'object') {
-                                const services = Object.keys(parsed).map(serviceName => {
-                                    const serviceData = parsed[serviceName];
-                                    // Extract all fields from the service data
-                                    return {
-                                        name: serviceName,
-                                        application: app.name,
-                                        path: app.path,
-                                        // Include all service details
-                                        service: serviceData.service || serviceName,
-                                        serverName: serviceData.name || serviceName,
-                                        ip: serviceData.ip,
-                                        port: serviceData.port,
-                                        status: serviceData.status,
-                                        player_count: serviceData.player_count,
-                                        max_players: serviceData.max_players,
-                                        memory_usage: serviceData.memory_usage,
-                                        cpu_usage: serviceData.cpu_usage,
-                                        game_pid: serviceData.game_pid,
-                                        service_pid: serviceData.service_pid
-                                    };
-                                });
-                                console.log(`Extracted ${services.length} services from object for ${app.name}:`, services);
-                                allServices.push(...services);
-                            }
-                        } else {
-                            // Fallback: Parse as line-separated service names
-                            const services = stdout.split('\n')
-                                .filter(line => line.trim())
-                                .map(service => ({
-                                    name: service.trim(),
-                                    application: app.name,
-                                    path: app.path
-                                }));
-                            allServices.push(...services);
-                        }
-                    } catch (e) {
-                        console.error(`Error parsing services for ${app.name}:`, e);
-                        // Fallback: Parse as line-separated service names
-                        const services = stdout.split('\n')
-                            .filter(line => line.trim())
-                            .map(service => ({
-                                name: service.trim(),
-                                application: app.name,
-                                path: app.path
-                            }));
-                        allServices.push(...services);
-                    }
-                    
-                    resolve();
-                });
-            });
-        }
-        
-        console.log(`Total services collected: ${allServices.length}`);
-        console.log('All services:', JSON.stringify(allServices, null, 2));
-        
-        res.json({
-            success: true,
-            services: allServices,
-            applications: applications,
-            errors: errors.length > 0 ? errors : undefined,
-            output: `Found ${allServices.length} services across ${applications.length} applications`
         });
-        
-    } catch (error) {
-        console.error('Get services error:', error);
-        res.json({
-            success: false,
-            error: error.message,
-            output: '',
-            services: []
-        });
-    }
 });
 
 // Get stats endpoint - now queries all applications

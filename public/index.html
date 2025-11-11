@@ -1234,7 +1234,8 @@
         async function fetchApplications() {
             // Try to use localStorage for faster results, defaulting back to the manual fetch
             return new Promise((resolve, reject) => {
-                let applications = localStorage.getItem('applications');
+                //let applications = localStorage.getItem('applications');
+                let applications = null;
 
                 if (applications) {
                     resolve(JSON.parse(applications));
@@ -1357,10 +1358,10 @@
             loadAllServicesAndStats();
             
             // Auto-refresh every 5 seconds
-            /*setInterval(() => {
+            setInterval(() => {
                 addTerminalLine('Auto-refreshing...', 'info');
                 loadAllServicesAndStats();
-            }, 5000);*/
+            }, 10000);
         });
     </script>
 </body>
