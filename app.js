@@ -1,9 +1,64 @@
+/**
+ * Represents the details of an application.
+ *
+ * @typedef {Object} AppData
+ * @property {string} title Name of the application.
+ * @property {string} guid Globally unique identifier of the application.
+ * @property {string} icon Icon URL of the application.
+ * @property {string} repo Repository URL fragment of the application.
+ * @property {string} installer Installer URL fragment of the application.
+ * @property {string} source Source handler for the application installer.
+ * @property {string} thumbnail Thumbnail URL of the application.
+ * @property {HostAppData[]} hosts List of hosts where the application is installed.
+ * @property {string} image Full size image URL of the application.
+ * @property {string} header Header image URL of the application.
+ */
+
+/**
+ * Represents the details of a host specifically regarding an installed application.
+ *
+ * @typedef {Object} HostAppData
+ * @property {string} host Hostname or IP of host.
+ * @property {string} path Path where the application is installed on the host.
+ *
+ */
+
+/**
+ * Represents the details of a service.
+ *
+ * @typedef {Object} ServiceData
+ * @property {string} name Name of the service, usually operator set for the instance/map name.
+ * @property {string} service Service identifier registered in systemd.
+ * @property {string} status Current status of the service, one of [running, stopped, starting, stopping].
+ * @property {string} cpu_usage Current CPU usage of the service as a percentage or 'N/A'.
+ * @property {string} memory_usage Current memory usage of the service in MB/GB or 'N/A'.
+ * @property {number} game_pid Process ID of the game server process, or 0 if not running.
+ * @property {number} service_pid Process ID of the service manager process, or 0 if not running.
+ * @property {string} ip IP address the service is bound to.
+ * @property {number} port Port number the service is using.
+ * @property {number} player_count Current number of players connected to the service.
+ * @property {number} max_players Maximum number of players allowed on the service.
+ */
+
+/**
+ * Represents a configuration option for a given service or app
+ *
+ * @typedef {Object} AppConfigOption
+ * @property {string} option Name of the configuration option.
+ * @property {string|number|bool} value Current value of the configuration option.
+ * @property {string|number|bool} default Default value of the configuration option.
+ * @property {string} type Data type of the configuration option (str, int, bool, float, text).
+ * @property {string} help Help text or description for the configuration option.
+ */
+
 const express = require('express');
 const path = require('path');
 const { exec } = require('child_process');
 const multer = require('multer');
 const fs = require('fs');
 const yaml = require('js-yaml');
+const NodeCacheStore = require('node-cache');
+const cache = new NodeCacheStore();
 
 const app = express();
 const PORT = process.env.PORT || 3077;
@@ -11,7 +66,10 @@ const PORT = process.env.PORT || 3077;
 // Load environment variables
 require('dotenv').config();
 
-// getSSHConfig -> getSSHHosts
+
+/***************************************************************
+ **               Common Functions
+ ***************************************************************/
 
 /**
  * Reload the environmental .env file, generally useful after changes are done
@@ -84,10 +142,8 @@ async function cmdRunner(target, cmd, extraFields = {}) {
 
 /**
  * Get all applications from /var/lib/warlock/*.app registration files
- *
- * @param target Hostname or IP of the target machine to run commands against
- *
- * @returns {Promise<unknown>}
+ * *
+ * @returns {Promise<Object.<string, AppData>>}
  */
 async function getAllApplications() {
     return new Promise((resolve, reject) => {
@@ -95,11 +151,18 @@ async function getAllApplications() {
             appsFilePath = path.join(__dirname, 'Apps.yaml'),
             cmd = 'for file in /var/lib/warlock/*.app; do if [ -f "$file" ]; then echo "$(basename "$file" \'.app\'):$(cat "$file")"; fi; done';
         let applications = {},
-            promises = [];
+            promises = [],
+            cachedApplications = cache.get('all_applications');
 
         if (hosts.length === 0) {
             return reject(new Error('No hosts configured in HOSTS environment variable.'));
         }
+
+        if (cachedApplications) {
+            console.debug('getAllApplications: Returning cached application data');
+            return resolve(cachedApplications);
+        }
+
 
         // Open Apps.yaml and parse it for the list of applications
         if (fs.existsSync(appsFilePath)) {
@@ -144,7 +207,49 @@ async function getAllApplications() {
                     }
                 });
 
+                // Cache the applications for 1 hour
+                cache.set('all_applications', applications, 3600);
                 return resolve(applications);
+            });
+    });
+}
+
+/**
+ * Get the details of a single service on a given host
+ *
+ * @param appData {AppData}
+ * @param hostData {HostAppData}
+ * @returns {Promise<{services:Object.<{string}, ServiceData>, app:AppData, host:HostAppData}>}
+ */
+async function getServicesStatus(appData, hostData) {
+    return new Promise((resolve, reject) => {
+
+        const guid = appData.guid;
+
+        let cachedServices = cache.get(`services_${guid}_${hostData.host}`);
+        if (cachedServices) {
+            return resolve({
+                app: appData,
+                host: hostData,
+                services: cachedServices
+            });
+        }
+
+        cmdRunner(hostData.host, `${hostData.path}/manage.py --get-services`)
+            .then(result => {
+                const appServices = JSON.parse(result.stdout);
+
+                // Save this to cache for faster future lookups
+                cache.set(`services_${guid}_${hostData.host}`, appServices, 10); // Cache for 10 seconds
+
+                return resolve({
+                    app: appData,
+                    host: hostData,
+                    services: appServices
+                });
+            })
+            .catch(error => {
+                return reject(new Error(`Error retrieving services for application '${guid}' on host '${hostData.host}': ${error.message}`));
             });
     });
 }
@@ -152,7 +257,7 @@ async function getAllApplications() {
 /**
  * Get all services from all applications across all hosts
  *
- * @returns {Promise<void>}
+ * @returns {Promise<[{service:ServiceData, app:AppData, host:HostAppData}]>}
  */
 async function getAllServices() {
     return new Promise((resolve, reject) => {
@@ -164,19 +269,7 @@ async function getAllServices() {
                 for (let guid in results) {
                     let app = results[guid];
                     for (let hostData of app.hosts) {
-                        const cmd = `${hostData.path}/manage.py --get-services`;
-                        allLookups.push(
-                            cmdRunner(
-                                hostData.host,
-                                cmd,
-                                {
-                                    host: hostData.host,
-                                    app_guid: guid,
-                                    app_name: app.title,
-                                    app_path: hostData.path
-                                }
-                            )
-                        );
+                        allLookups.push(getServicesStatus(app, hostData));
                     }
                 }
 
@@ -185,11 +278,10 @@ async function getAllServices() {
                         serviceResults.forEach(result => {
                             console.debug(result);
                             if (result.status === 'fulfilled') {
-                                let appServices = JSON.parse(result.value.stdout);
+                                let appServices = result.value.services;
                                 for (let svc of Object.values(appServices)) {
                                     // Merge extra fields into service data
-                                    let res = Object.assign({}, svc, result.value.extraFields);
-                                    services.push(res);
+                                    services.push({service: svc, app: result.value.app, host: result.value.host} );
                                 }
                             }
                         });
@@ -200,13 +292,78 @@ async function getAllServices() {
     });
 }
 
+/**
+ *
+ * @param host
+ * @param guid
+ * @param service
+ * @returns {Promise<Object.<app: AppData, host: HostAppData, service: ServiceData>>}
+ */
+async function validateHostService(host, guid, service) {
+    return new Promise((resolve, reject) => {
+        getAllApplications()
+            .then(applications => {
+                const app = applications[guid] || null;
+                let found = false;
+
+                if (!app) {
+                    return reject(new Error(`Application with GUID '${guid}' not found`));
+                }
+
+                app.hosts.forEach(hostData => {
+                    if (hostData.host === host) {
+                        found = true;
+
+                        // Check if the service exists on the target host for this application
+                        getServicesStatus(app, hostData)
+                            .then(serviceResults => {
+                                const svc = serviceResults.services[service] || null;
+
+                                if (!svc) {
+                                    reject(new Error(`Service '${service}' not found in application '${guid}' on host '${host}'`));
+                                }
+
+                                return resolve({
+                                    app: app,
+                                    host: hostData,
+                                    service: svc
+                                });
+                            })
+                            .catch(error => {
+                                return reject(new Error(`Error retrieving services for application '${guid}' on host '${host}': ${error.message}`));
+                            });
+                    }
+
+                    if (!found) {
+                        // If the host is not found, we can immediately reject the lookup.
+                        return reject(new Error(`Host '${host}' does not have application installed with GUID '${guid}'`));
+                    }
+                });
+            });
+    });
+}
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+/***************************************************************
+ **               Application/UI Endpoints
+ ***************************************************************/
+
 // Route to serve the main HTML page (legacy)
 app.get('/index', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/service/configure/:guid/:host/:service', (req, res) => {
+    validateHostService(req.params.host, req.params.guid, req.params.service)
+        .then(() => {
+            res.sendFile(path.join(__dirname, 'public', 'service_configure.html'));
+        })
+        .catch(error => {
+            res.status(404).send(`Service configuration not found: ${error.message}`);
+        });
 });
 
 // Route to serve the new SPA
@@ -254,129 +411,18 @@ app.get('/settings', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'settings.html'));
 });
 
-// Game Server Command configurations
-const commandConfigs = {
-    'create-server': {
-        command: (params) => {
-            return `ssh ${getSSHConfig().SSH_USER}@${getSSHConfig().SSH_HOST} '/home/steam/VEIN/manage.py create_server --game=${params.game_type} --name="${params.server_name}" --max-players=${params.max_players} --size=${params.server_size}'`;
-        },
-        description: 'Create Game Server'
-    },
-    'server-control': {
-        command: (params) => {
-            const actions = {
-                'start': buildSSHCommand(`/home/steam/VEIN/manage.py start_server --server-id=${params.server_id}`),
-                'stop': buildSSHCommand(`/home/steam/VEIN/manage.py stop_server --server-id=${params.server_id}`),
-                'restart': buildSSHCommand(`/home/steam/VEIN/manage.py restart_server --server-id=${params.server_id}`),
-                'force-stop': buildSSHCommand(`/home/steam/VEIN/manage.py force_stop_server --server-id=${params.server_id}`)
-            };
-            return actions[params.action] || actions['start'];
-        },
-        description: 'Server Control'
-    },
-    'server-config': {
-        command: (params) => {
-            if (params.config_content) {
-                // Save config content to a temp file and upload it
-                return buildSSHCommand(`/home/steam/VEIN/manage.py configure_server --server-id=${params.server_id} --config-type=${params.config_type} --config-data="${params.config_content}"`);
-            } else {
-                return buildSSHCommand(`/home/steam/VEIN/manage.py get_server_config --server-id=${params.server_id} --config-type=${params.config_type}`);
-            }
-        },
-        description: 'Server Configuration'
-    },
-    'player-management': {
-        command: (params) => {
-            const actions = {
-                'list_players': buildSSHCommand(`/home/steam/VEIN/manage.py list_players --server-id=${params.server_id}`),
-                'kick_player': buildSSHCommand(`/home/steam/VEIN/manage.py kick_player --server-id=${params.server_id} --player="${params.player_name}"`),
-                'ban_player': buildSSHCommand(`/home/steam/VEIN/manage.py ban_player --server-id=${params.server_id} --player="${params.player_name}"`),
-                'unban_player': buildSSHCommand(`/home/steam/VEIN/manage.py unban_player --server-id=${params.server_id} --player="${params.player_name}"`),
-                'list_bans': buildSSHCommand(`/home/steam/VEIN/manage.py list_bans --server-id=${params.server_id}`)
-            };
-            return actions[params.action] || actions['list_players'];
-        },
-        description: 'Player Management'
-    },
-    'server-monitor': {
-        command: (params) => {
-            const monitors = {
-                'performance': buildSSHCommand(`/home/steam/VEIN/manage.py server_stats ${params.server_id !== 'all' ? '--server-id=' + params.server_id : '--all'}`),
-                'player_count': buildSSHCommand(`/home/steam/VEIN/manage.py player_count ${params.server_id !== 'all' ? '--server-id=' + params.server_id : '--all'}`),
-                'resource_usage': buildSSHCommand(`/home/steam/VEIN/manage.py resource_usage ${params.server_id !== 'all' ? '--server-id=' + params.server_id : '--all'}`),
-                'server_logs': buildSSHCommand(`/home/steam/VEIN/manage.py server_logs ${params.server_id !== 'all' ? '--server-id=' + params.server_id : '--all'} --tail=50`)
-            };
-            return monitors[params.monitor_type] || monitors['performance'];
-        },
-        description: 'Server Monitoring'
-    },
-    'backup-restore': {
-        command: (params) => {
-            const actions = {
-                'create_backup': buildSSHCommand(`/home/steam/VEIN/manage.py create_backup --server-id=${params.server_id} ${params.backup_name ? '--name=' + params.backup_name : ''}`),
-                'restore_backup': buildSSHCommand(`/home/steam/VEIN/manage.py restore_backup --server-id=${params.server_id} --backup-name=${params.backup_name}`),
-                'list_backups': buildSSHCommand(`/home/steam/VEIN/manage.py list_backups --server-id=${params.server_id}`),
-                'delete_backup': buildSSHCommand(`/home/steam/VEIN/manage.py delete_backup --server-id=${params.server_id} --backup-name=${params.backup_name}`)
-            };
-            return actions[params.action] || actions['list_backups'];
-        },
-        description: 'Backup & Restore'
-    }
-};
 
-// Generic command execution endpoint
-function createCommandEndpoint(commandType) {
-    return (req, res) => {
-        const config = commandConfigs[commandType];
-        if (!config) {
-            return res.json({
-                success: false,
-                output: `Unknown command type: ${commandType}`,
-                stderr: ''
-            });
-        }
+/***************************************************************
+ **                      API Endpoints
+ ***************************************************************/
 
-        let command;
-        if (typeof config.command === 'function') {
-            command = config.command(req.body);
-        } else {
-            command = config.command;
-        }
-        
-        console.log(`Executing ${config.description}:`, command);
-        
-        exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`${config.description} error:`, error);
-                return res.json({
-                    success: false,
-                    command: command,
-                    output: `Error: ${error.message}`,
-                    stderr: stderr || ''
-                });
-            }
-            
-            res.json({
-                success: true,
-                command: command,
-                output: stdout || 'Command executed successfully (no output)',
-                stderr: stderr || ''
-            });
-        });
-    };
-}
-
-// Create endpoints for each game server command type
-app.post('/create-server', createCommandEndpoint('create-server'));
-app.post('/server-control', createCommandEndpoint('server-control'));
-app.post('/server-config', createCommandEndpoint('server-config'));
-app.post('/player-management', createCommandEndpoint('player-management'));
-app.post('/server-monitor', createCommandEndpoint('server-monitor'));
-app.post('/backup-restore', createCommandEndpoint('backup-restore'));
-
-
-// Get services endpoint - now queries all applications
-app.post('/get-services', async (req, res) => {
+/**
+ * Get all services and their stats
+ *
+ * Returns JSON data with success (True/False), output/error, and services {list}
+ *
+ */
+app.get('/api/services', async (req, res) => {
     getAllServices()
         .then((services) => {
             return res.json({
@@ -394,100 +440,86 @@ app.post('/get-services', async (req, res) => {
         });
 });
 
-// Get stats endpoint - now queries all applications
-app.post('/get-stats', async (req, res) => {
-    try {
-        const serviceName = req.body.service || '';
-        const applications = await getAllApplications();
-        
-        if (applications.length === 0) {
+/**
+ * Get a single service and its status from a given host and application GUID
+ */
+app.get('/api/service/:guid/:host/:service', async (req, res) => {
+    validateHostService(req.params.host, req.params.guid, req.params.service)
+        .then(dat => {
+            return res.json({
+                success: true,
+                service: dat.service
+            });
+        })
+        .catch(e => {
             return res.json({
                 success: false,
-                error: 'No applications found',
-                output: ''
+                error: e.message,
+                service: []
             });
-        }
-        
-        // If specific service requested, find which app it belongs to
-        if (serviceName) {
-            let foundStats = null;
-            
-            for (const app of applications) {
-                const managePyPath = `${app.path}/manage.py`;
-                const sshCommand = buildSSHCommand(`${managePyPath} --get-stats --service ${serviceName}`);
-                
-                console.log(`Checking ${app.name} for service ${serviceName}:`, sshCommand);
-                
-                await new Promise((resolve) => {
-                    exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-                        if (!error && stdout && !stdout.includes('not found') && !stdout.includes('error')) {
-                            foundStats = {
-                                success: true,
-                                output: stdout,
-                                stderr: stderr,
-                                application: app.name,
-                                path: app.path
-                            };
-                        }
-                        resolve();
-                    });
-                });
-                
-                if (foundStats) break;
-            }
-            
-            if (foundStats) {
-                return res.json(foundStats);
-            } else {
-                return res.json({
-                    success: false,
-                    error: `Service '${serviceName}' not found in any application`,
-                    output: ''
-                });
-            }
-        }
-        
-        // Get stats from all applications
-        const allStats = [];
-        
-        for (const app of applications) {
-            const managePyPath = `${app.path}/manage.py`;
-            const sshCommand = buildSSHCommand(`${managePyPath} --get-stats`);
-            
-            console.log(`Executing get-stats for ${app.name}:`, sshCommand);
-            
-            await new Promise((resolve) => {
-                exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
-                    if (!error && stdout) {
-                        allStats.push({
-                            application: app.name,
-                            path: app.path,
-                            stats: stdout
-                        });
-                    }
-                    resolve();
-                });
-            });
-        }
-        
-        res.json({
-            success: true,
-            output: allStats.map(s => `=== ${s.application} ===\n${s.stats}`).join('\n\n'),
-            stats: allStats
         });
-        
-    } catch (error) {
-        console.error('Get stats error:', error);
-        res.json({
-            success: false,
-            error: error.message,
-            output: ''
-        });
-    }
 });
 
-// Get applications from .app files in /var/lib/warlock
-app.post('/get-applications', (req, res) => {
+/**
+ * Get the configuration values and settings for a given service
+ */
+app.get('/api/service/:guid/:host/:service/configs', async (req, res) => {
+    validateHostService(req.params.host, req.params.guid, req.params.service)
+        .then(dat => {
+            cmdRunner(dat.host.host, `${dat.host.path}/manage.py --service ${dat.service.service} --get-configs`)
+                .then(result => {
+                    return res.json({
+                        success: true,
+                        configs: JSON.parse(result.stdout)
+                    });
+                })
+                .catch(e => {
+                    return res.json({
+                        success: false,
+                        error: e.message,
+                        service: []
+                    });
+                });
+        })
+        .catch(e => {
+            return res.json({
+                success: false,
+                error: e.message,
+                service: []
+            });
+        });
+});
+
+app.post('/api/service/:guid/:host/:service/configs', async (req, res) => {
+    validateHostService(req.params.host, req.params.guid, req.params.service)
+        .then(dat => {
+            const configUpdates = req.body;
+            const updatePromises = [];
+            for (let option in configUpdates) {
+                const value = configUpdates[option];
+                updatePromises.push(
+                    cmdRunner(dat.host.host, `${dat.host.path}/manage.py --service ${dat.service.service} --set-config "${option}" "${value}"`)
+                );
+            }
+            Promise.all(updatePromises)
+                .then(result => {
+                    return res.json({
+                        success: true,
+                    });
+                })
+                .catch(e => {
+                    return res.json({
+                        success: false,
+                        error: e.message
+                    });
+                });
+        });
+})
+
+/**
+ * Get all available applications and which hosts each is installed on
+ */
+app.get('/api/applications', (req, res) => {
     getAllApplications()
         .then(applications => {
             return res.json({
@@ -504,17 +536,24 @@ app.post('/get-applications', (req, res) => {
         });
 });
 
-// Service control endpoint (start/stop/restart) - now works with all applications dynamically
-app.post('/service-action', async (req, res) => {
-    const { host, service, action } = req.body;
-    
-    if (!service || !action) {
+/**
+ * Helper method to facilitate /api/service/[start|stop|restart] endpoints
+ *
+ * @param action {string}
+ * @param req {Request}
+ * @param res {Response}
+ * @returns {*}
+ */
+const serviceActionHandler = (action, req, res) => {
+    const { guid, host, service } = req.body;
+
+    if (!(host && guid && service && action)) {
         return res.json({
             success: false,
-            error: 'Service name and action are required'
+            error: 'Host, service, and action are required'
         });
     }
-    
+
     const validActions = ['start', 'stop', 'restart'];
     if (!validActions.includes(action)) {
         return res.json({
@@ -523,21 +562,75 @@ app.post('/service-action', async (req, res) => {
         });
     }
 
-    cmdRunner(host, `systemctl ${action} ${service}`)
-        .then(result => {
-            return res.json({
-                success: true,
-                output: result.stdout,
-                stderr: result.stderr
-            });
+    validateHostService(host, guid, service)
+        .then(dat => {
+            cmdRunner(host, `systemctl ${action} ${service}`)
+                .then(result => {
+                    return res.json({
+                        success: true,
+                        output: result.stdout,
+                        stderr: result.stderr
+                    });
+                })
+                .catch(e => {
+                    return res.json({
+                        success: false,
+                        error: e.message
+                    });
+                });
         })
         .catch(e => {
             return res.json({
                 success: false,
                 error: e.message
             });
-        })
+        });
+}
+// Service control endpoint (start/stop/restart) - now works with all applications dynamically
+app.post('/api/service/start', async (req, res) => {
+    serviceActionHandler('start', req, res);
+});
+app.post('/api/service/stop', async (req, res) => {
+    serviceActionHandler('stop', req, res);
+});
+app.post('/api/service/restart', async (req, res) => {
+    serviceActionHandler('restart', req, res);
+});
 
+app.get('/service-config', async (req, res) => {
+    const { guid, host, service } = req.body;
+
+    if (!(host && guid && service)) {
+        return res.json({
+            success: false,
+            error: 'Host, service, and action are required'
+        });
+    }
+
+    validateHostService(host, guid, service)
+        .then(dat => {
+            cmdRunner(host, `${dat.host.path}/manage.py --service ${service} --get-configs`)
+                .then(result => {
+                    return res.json({
+                        success: true,
+                        configs: JSON.parse(result.stdout),
+                        output: result.stdout,
+                        stderr: result.stderr
+                    });
+                })
+                .catch(e => {
+                    return res.json({
+                        success: false,
+                        error: e.message
+                    });
+                });
+        })
+        .catch(e => {
+            return res.json({
+                success: false,
+                error: e.message
+            });
+        });
 });
 
 // Legacy endpoint for backward compatibility
