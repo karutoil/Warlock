@@ -111,7 +111,7 @@ const buildSSHCommand = (target, remoteCommand) => {
         return remoteCommand; // No SSH needed for localhost
     }
     else {
-        return `ssh root@${target} '${remoteCommand}'`;
+        return `ssh -o LogLevel=quiet -o StrictHostKeyChecking=no root@${target} '${remoteCommand}'`;
     }
 };
 
@@ -128,10 +128,15 @@ async function cmdRunner(target, cmd, extraFields = {}) {
         const sshCommand = buildSSHCommand(target, cmd);
 
         console.debug('cmdRunner: Executing command on ' + target, sshCommand);
-        exec(sshCommand, { timeout: 30000 }, (error, stdout, stderr) => {
+        exec(sshCommand, { timeout: 30000, maxBuffer: 1024 * 1024 * 20 }, (error, stdout, stderr) => {
             if (error) {
-                console.error('cmdRunner: Received error:', error);
-                return reject(error);
+                console.error('cmdRunner: Received error:', stderr || error);
+                if (stderr) {
+                    return reject(new Error(stderr));
+                }
+                else {
+                    return reject(error);
+                }
             }
 
             console.debug('cmdRunner:', stdout);
@@ -401,8 +406,8 @@ app.get('/monitor', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'monitor.html'));
 });
 
-// File browser page route (legacy)
-app.get('/files', (req, res) => {
+// File browser page route
+app.get('/files/:host', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'files.html'));
 });
 
@@ -760,9 +765,18 @@ app.post('/stop-bpytop', (req, res) => {
     });
 });
 
+
 // File browser endpoints
-app.post('/browse-files', (req, res) => {
-    const { path: requestedPath } = req.body;
+app.get('/api/files/:host', (req, res) => {
+    const requestedPath = req.query.path || '/root';
+    const host = req.params.host;
+
+    if (!getSSHHosts().includes(host)) {
+        return res.json({
+            success: false,
+            error: 'Requested host is not in the configured HOSTS list'
+        });
+    }
     
     if (!requestedPath) {
         return res.json({
@@ -772,91 +786,61 @@ app.post('/browse-files', (req, res) => {
     }
     
     console.log('Browsing directory:', requestedPath);
-    
+
     // Use ls with detailed output to get file information
     // -la shows all details including symlinks
-    const browseCommand = buildSSHCommand(`ls -la "${requestedPath}" 2>/dev/null | tail -n +2`);
-    
-    exec(browseCommand, (error, stdout, stderr) => {
-        if (error) {
-            console.error('Browse command error:', error);
-            return res.json({
-                success: false,
-                error: error.message
-            });
-        }
-        
-        try {
-            const files = [];
-            const lines = stdout.trim().split('\n').filter(line => line.trim());
-            
-            for (const line of lines) {
-                const parts = line.trim().split(/\s+/);
-                if (parts.length >= 9) {
-                    const permissions = parts[0];
-                    const size = parseInt(parts[4]) || 0;
-                    
-                    // Handle symlinks - they have " -> " in the name
-                    const fullNamePart = parts.slice(8).join(' ');
-                    let name = fullNamePart;
-                    let symlinkTarget = null;
-                    let isSymlink = permissions.startsWith('l');
-                    
-                    if (isSymlink && fullNamePart.includes(' -> ')) {
-                        const symlinkParts = fullNamePart.split(' -> ');
-                        name = symlinkParts[0];
-                        symlinkTarget = symlinkParts[1];
-                    }
-                    
-                    // Skip . and .. entries
-                    if (name === '.' || name === '..') continue;
-                    
-                    // Skip hidden files (starting with .)
-                    if (name.startsWith('.')) continue;
-                    
-                    const isDirectory = permissions.startsWith('d');
-                    const fullPath = requestedPath.endsWith('/') ? 
-                        `${requestedPath}${name}` : 
-                        `${requestedPath}/${name}`;
-                    
-                    // Determine actual type for symlinks
-                    let fileType = 'file';
-                    if (isSymlink) {
-                        fileType = 'symlink';
-                    } else if (isDirectory) {
-                        fileType = 'directory';
-                    }
-                    
-                    files.push({
-                        name: name,
-                        type: fileType,
-                        size: isDirectory ? null : size,
-                        permissions: permissions,
-                        path: fullPath,
-                        symlinkTarget: symlinkTarget
-                    });
-                }
+    //let cmd = `ls -la "${requestedPath}" | tail -n +2`;
+    let cmd = `P="${requestedPath}";`
+    cmd += 'ls -1 "$P" | while read F; do ' +
+        '[ -h "$P/$F" ] && FP="$(readlink "$P/$F")" || FP="$P/$F";' +
+        '[ -h "$P/$F" ] && SL="true" || SL="false";' +
+        '[ -d "$FP" ] && S="null" || S="$(stat -L -c%s "$FP")";' +
+        'M="$(file --mime-type "$FP" | sed "s#.*: ##")";' +
+        'PERMS="$(stat -c%a "$FP")";' +
+        'U="$(stat -c%U "$FP")";' +
+        'G="$(stat -c%G "$FP")";' +
+        'MTIME="$(stat -c%Y "$FP")";' +
+        `echo "{\\"name\\":\\"$F\\",\\"mimetype\\":\\"$M\\",\\"path\\":\\"$FP\\",\\"size\\":$S,\\"symlink\\":$SL,\\"permissions\\":$PERMS,\\"user\\":\\"$U\\",\\"group\\":\\"$G\\",\\"modified\\":$MTIME},";` +
+        'done;';
+    cmdRunner(host, cmd)
+        .then(result => {
+            // Resulting code will be _almost_ JSON compatible, just strip the trailing comma and wrap in []
+            let jsonOutput = `[${result.stdout.trim().replace(/,$/, '')}]`;
+            let files = [];
+            try {
+                files = JSON.parse(jsonOutput);
+            } catch (e) {
+                return res.json({
+                    success: false,
+                    error: 'Failed to parse directory listing'
+                });
             }
-            
+
             res.json({
                 success: true,
                 files: files,
                 path: requestedPath
             });
-            
-        } catch (parseError) {
-            console.error('Parse error:', parseError);
-            res.json({
+        })
+        .catch(e => {
+            return res.json({
                 success: false,
-                error: 'Failed to parse directory listing'
+                error: e.message
             });
-        }
-    });
+        });
 });
 
 // File viewing endpoint
-app.post('/view-file', (req, res) => {
-    const { path: filePath } = req.body;
+app.get('/api/file/:host', (req, res) => {
+    const filePath = req.query.path || null;
+    const host = req.params.host;
+
+    if (!getSSHHosts().includes(host)) {
+        return res.json({
+            success: false,
+            error: 'Requested host is not in the configured HOSTS list'
+        });
+    }
     
     if (!filePath) {
         return res.json({
@@ -868,132 +852,72 @@ app.post('/view-file', (req, res) => {
     console.log('Viewing file:', filePath);
     
     // First check if it's a text file and get its size
-    const fileInfoCommand = buildSSHCommand(`file "${filePath}" && stat -c%s "${filePath}" 2>/dev/null`);
-    
-    exec(fileInfoCommand, (error, stdout, stderr) => {
-        if (error) {
-            return res.json({
-                success: false,
-                error: 'Cannot access file'
-            });
-        }
-        
-        const lines = stdout.trim().split('\n');
-        const fileType = lines[0] || '';
-        const fileSize = parseInt(lines[1]) || 0;
-        
-        // Check if file is too large (limit to 1MB for preview)
-        if (fileSize > 1024 * 1024) {
-            return res.json({
-                success: false,
-                error: 'File is too large to preview (>1MB). Use head or tail commands instead.'
-            });
-        }
-        
-        // Check if file appears to be binary (but allow text-based script files)
-        const isPythonScript = filePath.endsWith('.py') || fileType.includes('Python script') || fileType.includes('python');
-        const isTextFile = filePath.endsWith('.txt') || filePath.endsWith('.log') || filePath.endsWith('.conf') || 
-                          filePath.endsWith('.json') || filePath.endsWith('.xml') || filePath.endsWith('.yml') || 
-                          filePath.endsWith('.yaml') || filePath.endsWith('.sh') || filePath.endsWith('.md') ||
-                          fileType.includes('text') || fileType.includes('ASCII');
-        
-        if (!isPythonScript && !isTextFile && (fileType.includes('binary') || fileType.includes('executable'))) {
-            return res.json({
-                success: false,
-                error: 'Binary files cannot be previewed'
-            });
-        }
-        
-        // Read the file content
-        const readCommand = buildSSHCommand(`cat "${filePath}" 2>/dev/null`);
-        
-        exec(readCommand, { maxBuffer: 1024 * 1024 * 2 }, (readError, readStdout, readStderr) => {
-            if (readError) {
-                return res.json({
-                    success: false,
-                    error: 'Cannot read file content'
-                });
+    cmdRunner(host, `[ -h "${filePath}" ] && F="$(readlink "${filePath}")" || F="${filePath}"; file --mime-type "$F" && stat -c%s "$F" && echo "$F"`)
+        .then(result => {
+            let lines = result.stdout.trim().split('\n'),
+                mimetype = lines[0] || '',
+                encoding = null,
+                cmd = null,
+                filesize = parseInt(lines[1]) || 0,
+                filename = lines[2] || '';
+
+            if (mimetype) {
+                mimetype = mimetype.split(':').pop().trim();
             }
-            
-            res.json({
-                success: true,
-                content: readStdout,
-                fileType: fileType,
-                fileSize: fileSize
+
+            if (filesize <= 1024 * 1024 * 10) {
+                if (mimetype.startsWith('text/') || mimetype === 'application/json' || mimetype === 'application/xml') {
+                    cmd = `cat "${filePath}"`;
+                    encoding = 'raw';
+                } else if (mimetype.startsWith('image/') || mimetype.startsWith('video/')) {
+                    // For images/videos, return base64 encoding
+                    cmd = `base64 "${filePath}"`;
+                    encoding = 'base64';
+                }
+            }
+
+            // Read the file content
+            if (cmd) {
+                cmdRunner(host, cmd)
+                    .then(result => {
+                        return res.json({
+                            success: true,
+                            content: result.stdout,
+                            encoding: encoding,
+                            mimetype: mimetype,
+                            size: filesize,
+                            path: filename,
+                            name: path.basename(filePath),
+                        });
+                    })
+                    .catch(e => {
+                        return res.json({
+                            success: false,
+                            error: 'Cannot read file content'
+                        });
+                    });
+            }
+            else {
+                return res.json({
+                    success: true,
+                    content: null,
+                    encoding: encoding,
+                    mimetype: mimetype,
+                    size: filesize,
+                    path: filename,
+                    name: path.basename(filePath),
+                })
+            }
+
+        })
+        .catch(e => {
+            return res.json({
+                success: false,
+                error: e.message
             });
         });
-    });
 });
 
-// Image viewing endpoint - returns base64 encoded image
-app.post('/view-image', (req, res) => {
-    const { path: filePath } = req.body;
-    
-    if (!filePath) {
-        return res.json({
-            success: false,
-            error: 'File path is required'
-        });
-    }
-    
-    console.log('Viewing image:', filePath);
-    
-    // Check file size first
-    const sizeCommand = buildSSHCommand(`stat -c%s "${filePath}" 2>/dev/null`);
-    
-    exec(sizeCommand, (error, stdout) => {
-        if (error) {
-            return res.json({
-                success: false,
-                error: 'Cannot access image file'
-            });
-        }
-        
-        const fileSize = parseInt(stdout.trim()) || 0;
-        
-        // Limit image/video size to 100MB
-        if (fileSize > 100 * 1024 * 1024) {
-            return res.json({
-                success: false,
-                error: 'File is too large to preview (>100MB)'
-            });
-        }
-        
-        // Read the image/video as base64
-        const readCommand = buildSSHCommand(`base64 "${filePath}" 2>/dev/null`);
-        
-        exec(readCommand, { maxBuffer: 150 * 1024 * 1024 }, (readError, readStdout) => {
-            if (readError) {
-                return res.json({
-                    success: false,
-                    error: 'Cannot read image file'
-                });
-            }
-            
-            // Determine mime type from file extension
-            const ext = filePath.split('.').pop().toLowerCase();
-            const mimeTypes = {
-                'jpg': 'image/jpeg',
-                'jpeg': 'image/jpeg',
-                'png': 'image/png',
-                'gif': 'image/gif',
-                'webp': 'image/webp',
-                'bmp': 'image/bmp',
-                'svg': 'image/svg+xml',
-                'ico': 'image/x-icon'
-            };
-            
-            const mimeType = mimeTypes[ext] || 'image/jpeg';
-            
-            res.json({
-                success: true,
-                image: readStdout.trim(),
-                mimeType: mimeType,
-                fileSize: fileSize
-            });
-        });
-    });
-});
 
 // Enhanced system monitoring endpoint
 app.post('/enhanced-monitor', (req, res) => {

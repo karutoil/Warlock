@@ -52,6 +52,18 @@
  */
 
 /**
+ * Representation of a file on the filesystem
+ *
+ * @typedef {Object} FileData
+ * @property {string} name Basename of the file (without path)
+ * @property {string} path Full path name of the file, (with symlinks resolving to the full destination)
+ * @property {number} size Size of the file in bytes
+ * @property {string} mimetype MIME type of the file, eg "text/plain" or "application/octet-stream"
+ * @property {string} encoding Encoding to use for content parsing, or null if binary
+ * @property {string} content Content of the file as a string, or null if binary
+ */
+
+/**
  * Fetches the list of services from the backend API.
  *
  * @returns {Promise<[{app: AppData, host: HostAppData, service: ServiceData}]>} A promise that resolves to an array of AppDetails objects.
@@ -135,4 +147,19 @@ async function fetchApplications() {
 				});
 		}
 	});
+}
+
+/**
+ * Get the rendered HTML for an application icon.
+ *
+ * @param {AppData} appData
+ * @returns {string}
+ */
+function renderAppIcon(appData) {
+	if (appData && appData.icon) {
+		return '<img src="' + appData.icon + '" alt="' + appData.title + ' Icon" title="' + appData.title + '">';
+	}
+	else {
+		return '<i class="fas fa-cube" style="font-size: 1.5rem; color: white;"></i>';
+	}
 }

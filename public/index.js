@@ -2,16 +2,6 @@ const servicesContainer = document.getElementById('servicesContainer');
 
 let applicationData = null;
 
-
-function renderAppIcon(appData) {
-	if (appData && appData.icon) {
-		return '<img src="' + appData.icon + '" alt="' + appData.title + ' Icon" title="' + appData.title + '">';
-	}
-	else {
-		return '<i class="fas fa-cube" style="font-size: 1.5rem; color: white;"></i>';
-	}
-}
-
 function createServicesTable() {
 
 	if (document.getElementById('services-table')) {
@@ -20,7 +10,7 @@ function createServicesTable() {
 
 	let tableHTML = `
 		<div style="overflow-x: auto;">
-			<table id="services-table" style="width: 100%; border-collapse: collapse; background: rgba(0, 40, 80, 0.3); border: 1px solid rgba(0, 150, 255, 0.2); border-radius: 10px; overflow: hidden;">
+			<table id="services-table">
 				<thead>
 					<tr class="header">
 						<th>Host</th>
@@ -115,6 +105,7 @@ function populateServicesTable(servicesWithStats) {
 		}
 
 		row.dataset.found = '1'; // Mark as found
+		row.classList.remove('updating');
 
 		fields.forEach(field => {
 			const cell = row.querySelector('td.' + field);
@@ -214,51 +205,45 @@ function displayApplications(applications) {
 		// Extract the last folder name from the path
 		let //pathParts = app.path.split('/').filter(part => part.length > 0),
 			displayName = app.title || guid,
-			icon = app.icon || null,
+			icon = renderAppIcon(app),
 			thumbnail = app.thumbnail || null;
 
-		if (!icon) {
-			icon = '<i class="fas fa-cube" style="font-size: 1.5rem; color: white;"></i>';
-		}
-		else {
-			icon = '<img src="' + icon + '" alt="' + displayName + ' Icon" style="width: 36px; height: 36px; border-radius: 6px;">';
-		}
-
 		if (thumbnail) {
-			thumbnail = '<img class="app-thumbnail" src="' + thumbnail + '" alt="' + displayName + ' Thumbnail" style="width: 100%; height: auto;">';
+			thumbnail = '<img class="app-thumbnail" src="' + thumbnail + '" alt="' + displayName + ' Thumbnail">';
 		}
 
 
 		html += `
-                    <div class="application-card" style="background: rgba(26, 26, 46, 0.9); border: 1px solid rgba(0, 150, 255, 0.2); border-radius: 12px; padding: 1.5rem; transition: all 0.3s; cursor: pointer; position: relative; overflow: hidden;"
-                         onmouseover="this.style.borderColor='#0096ff'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 20px rgba(0, 150, 255, 0.3)';"
-                         onmouseout="this.style.borderColor='rgba(0, 150, 255, 0.2)'; this.style.transform='translateY(0)'; this.style.boxShadow='none';"
-                         onclick="window.open('/files.html?path=${encodeURIComponent(app.path)}', '_blank')">
-                        ${thumbnail ? thumbnail : ''}
-                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                            <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #0096ff 0%, #0066cc 100%); border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0, 150, 255, 0.3);">
-                                ${icon}
-                            </div>
-                            <div style="flex: 1;">
-                                <h4 style="color: #0096ff; margin: 0; font-size: 1.1rem; font-weight: 600;">${displayName}</h4>
-                            </div>
-                        </div>
-                        <div style="padding: 0.75rem; background: rgba(0, 40, 80, 0.4); border-radius: 6px; border-left: 3px solid #0096ff;">
-                            <div style="display: flex; align-items: center; gap: 0.5rem; color: #87ceeb; font-size: 0.9rem;">
-                                <i class="fas fa-folder" style="color: #0096ff;"></i>
-                                <span style="font-family: 'Monaco', monospace; word-break: break-all;">${app.path}</span>
-                            </div>
-                        </div>
-                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-                            <button onclick="event.stopPropagation(); window.open('/files.html?path=${encodeURIComponent(app.path)}', '_blank')" 
-                                    style="flex: 1; padding: 0.5rem; background: linear-gradient(135deg, #0096ff 0%, #0066cc 100%); border: none; border-radius: 6px; color: white; font-size: 0.85rem; cursor: pointer; transition: all 0.3s;"
-                                    onmouseover="this.style.background='linear-gradient(135deg, #00a8ff 0%, #0077dd 100%)'"
-                                    onmouseout="this.style.background='linear-gradient(135deg, #0096ff 0%, #0066cc 100%)'">
-                                <i class="fas fa-folder-open"></i> Browse
-                            </button>
-                        </div>
-                    </div>
-                `;
+			<div class="application-card">
+				${thumbnail ? thumbnail : ''}
+				<div class="app-name">
+					<div class="app-icon">
+						${icon}
+					</div>
+					<div style="flex: 1;">
+						<h4>${displayName}</h4>
+					</div>
+				</div>
+				<div class="app-installs">`;
+
+		app.hosts.forEach(host => {
+			html += `<div class="app-install">
+					<span class="host-name">${host.host}</span>
+					<span class="host-actions">
+						<button class="link-control action-configure" data-href="/application/${guid}/configure/${host.host}" title="Configure Application">
+							<i class="fas fa-cog"></i>
+						</button>
+						<button class="link-control action-browse" data-href="/files/${host.host}?path=${host.path}" title="Browse Files">
+							<i class="fas fa-folder"></i>
+						</button>
+						<button class="ZZZZ action-remove" data-href="/application/${guid}/manage/${host.host}" title="Uninstall Game">
+							<i class="fas fa-trash-alt"></i>
+						</button>
+					</span>
+				</div>`;
+		});
+
+		html += `</div></div>`;
 	}
 
 	applicationsList.innerHTML = html;
@@ -300,15 +285,26 @@ document.addEventListener('click', e => {
 				host = btn.dataset.host,
 				guid = btn.dataset.guid;
 
-			serviceAction(guid, host, service, action);
 			e.preventDefault();
+
+			if (btn.classList.contains('disabled')) {
+				return;
+			}
+
+			btn.classList.add('disabled');
+			if (btn.closest('tr')) {
+				btn.closest('tr').classList.add('updating');
+			}
+
+			serviceAction(guid, host, service, action);
 		}
 		else if (e.target.classList.contains('link-control') || e.target.closest('.link-control')) {
 			let btn = e.target.classList.contains('link-control') ? e.target : e.target.closest('.link-control'),
 				href = btn.dataset.href;
 
-			window.location.href = href;
 			e.preventDefault();
+
+			window.location.href = href;
 		}
 	}
 
