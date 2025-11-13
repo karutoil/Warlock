@@ -145,6 +145,76 @@ async function cmdRunner(target, cmd, extraFields = {}) {
     });
 }
 
+async function updateFilePermissions(target, filename, user = null, group = null) {
+    return new Promise((resolve, reject) => {
+        let cmd = null;
+        if (user && group) {
+            cmd = `chown ${user}:${group} "${filename}"`;
+        }
+        else {
+            // If we do not have explicit user:group membership, just use the parent directory.
+            cmd = `chown $(stat -c%U "$(dirname "${filename}")"):$(stat -c%U "$(dirname "${filename}")") "${filename}"`
+        }
+        cmdRunner(target, cmd)
+            .then(() => {
+                return resolve();
+            })
+            .catch(e => {
+                return reject(e);
+            });
+    });
+}
+
+/**
+ * Push a local file to a remote target via SCP
+ * or copy locally if target is localhost
+ *
+ * @param {string} target Target hostname or IP address
+ * @param {string} src Local source file, (usually within /tmp)
+ * @param {string} dest Fully resolved pathname of target file
+ * @returns {Promise<unknown>}
+ */
+async function filePushRunner(target, src, dest) {
+    return new Promise((resolve, reject) => {
+        let scpCommand = '';
+        if (target === 'localhost' || target === '127.0.0.1') {
+            scpCommand = `cp "${src}" "${dest}"`;
+            console.debug('filePushRunner: Copying local file', dest);
+        }
+        else {
+            scpCommand = `scp -o LogLevel=quiet -o StrictHostKeyChecking=no "${src}" root@${target}:"${dest}"`;
+            console.debug('filePushRunner: Pushing file to ' + target, dest);
+        }
+
+        exec(scpCommand, { timeout: 120000, maxBuffer: 1024 * 1024 * 20 }, (error, stdout, stderr) => {
+            if (error) {
+                console.error('filePushRunner: Received error:', stderr || error);
+                if (stderr) {
+                    return reject(new Error(stderr));
+                }
+                else {
+                    return reject(error);
+                }
+            }
+
+            console.debug('filePushRunner: file transfer completed');
+            // Now that the file is uploaded, ssh to the host to change the ownership to the correct user.
+            // We have no way of knowing exactly which user should have access,
+            // but we can guess based on the parent directory.
+            updateFilePermissions(target, dest)
+                .then(() => {
+                    return resolve({ stdout, stderr });
+                })
+                .catch(e => {
+                    return reject(e);
+                });
+        });
+    });
+}
+
+// @todo Make filePullRunner which uses process.spawn to receive a remote file in its entirety.
+// Use tar on remote server and tar on local server to drop contents into a local /tmp file for reading.
+
 /**
  * Get all applications from /var/lib/warlock/*.app registration files
  * *
@@ -918,6 +988,90 @@ app.get('/api/file/:host', (req, res) => {
         });
 });
 
+/**
+ * Save file contents to a given path on the target host
+ */
+app.post('/api/file/:host', (req, res) => {
+    const { path: filePath, content } = req.body;
+    const host = req.params.host;
+
+    if (!getSSHHosts().includes(host)) {
+        return res.json({
+            success: false,
+            error: 'Requested host is not in the configured HOSTS list'
+        });
+    }
+
+    if (!filePath) {
+        return res.json({
+            success: false,
+            error: 'File path is required'
+        });
+    }
+
+    if (content) {
+        // Content was requested, save to a local /tmp file to transfer to the target server
+        console.log('Saving file:', filePath);
+
+        // Create a temporary file on the server with the content and then move it
+        const tempFile = `/tmp/warlock_edit_${Date.now()}.tmp`;
+        fs.writeFileSync(tempFile, content, 'utf8');
+
+        // Push the temporary file to the target device
+        filePushRunner(host, tempFile, filePath)
+            .then(() => {
+                console.log('File saved successfully:', filePath);
+                res.json({
+                    success: true,
+                    message: 'File saved successfully'
+                });
+            })
+            .catch(error => {
+                console.error('Save file error:', error);
+                return res.json({
+                    success: false,
+                    error: `Cannot save file: ${error.message}`
+                });
+            })
+            .finally(() => {
+                // Remove the temporary file
+                fs.unlinkSync(tempFile);
+            });
+    }
+    else {
+        // No content supplied, that's fine!  We can still create an empty file.
+        cmdRunner(host, `touch "${filePath}"`)
+            .then(() => {
+                console.debug('File created successfully:', filePath);
+                // Update file permissions to try to keep them consistent
+                updateFilePermissions(host, filePath)
+                    .then(() => {
+                        res.json({
+                            success: true,
+                            message: 'File saved successfully'
+                        });
+                    })
+                    .catch(e => {
+                        console.error('Update permissions error:', e);
+                        return res.json({
+                            success: false,
+                            error: `File created but failed to update permissions: ${e.message}`
+                        });
+                    });
+            })
+            .catch(e => {
+                console.error('Create file error:', e);
+                return res.json({
+                    success: false,
+                    error: `Cannot create file: ${e.message}`
+                });
+            });
+    }
+});
+
+// @todo Add a PUT method to push a binary file to the target host.
+
+
 
 // Enhanced system monitoring endpoint
 app.post('/enhanced-monitor', (req, res) => {
@@ -1236,63 +1390,6 @@ app.post('/upload-file', upload.single('file'), (req, res) => {
         res.json({
             success: true,
             message: 'File uploaded successfully'
-        });
-    });
-});
-
-// Save file endpoint
-app.post('/save-file', (req, res) => {
-    const { path: filePath, content } = req.body;
-    
-    if (!filePath || content === undefined) {
-        return res.json({
-            success: false,
-            error: 'File path and content are required'
-        });
-    }
-    
-    console.log('Saving file:', filePath);
-    
-    // Create a temporary file on the server with the content and then move it
-    const tempFile = `/tmp/warlock_edit_${Date.now()}.tmp`;
-    
-    // Write content to temp file, then move it to the target location
-    const saveCommand = buildSSHCommand(`
-        cat > "${tempFile}" << '\''EOF'\''
-${content}
-EOF
-        if [ $? -eq 0 ]; then
-            cp "${tempFile}" "${filePath}"
-            rm -f "${tempFile}"
-            echo "File saved successfully"
-        else
-            rm -f "${tempFile}"
-            echo "Failed to write temporary file"
-            exit 1
-        fi
-    `);
-    
-    exec(saveCommand, { maxBuffer: 1024 * 1024 * 5 }, (error, stdout, stderr) => {
-        if (error) {
-            console.error('Save file error:', error);
-            return res.json({
-                success: false,
-                error: `Cannot save file: ${error.message}`
-            });
-        }
-        
-        if (stderr && stderr.trim()) {
-            console.error('Save file stderr:', stderr);
-            return res.json({
-                success: false,
-                error: `Save error: ${stderr.trim()}`
-            });
-        }
-        
-        console.log('File saved successfully:', filePath);
-        res.json({
-            success: true,
-            message: 'File saved successfully'
         });
     });
 });
