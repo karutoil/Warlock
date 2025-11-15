@@ -1,0 +1,15 @@
+meta {
+  name: GET Hosts
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{host}}/api/hosts
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+}
