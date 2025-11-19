@@ -1,4 +1,5 @@
 node_modules/
 DEV/
 .env
-.idea/copilot.*
+.idea/copilot*
+warlock.sqlite

@@ -39,9 +39,16 @@
 	--content-border: rgba(0, 212, 255, 0.45);
 	--content-hover-border: rgba(0, 212, 255, 1);
 	--content-shadow: rgba(0, 212, 255, 0.65);
+	--terminal: #02aa02;
+	--terminal-bg: rgba(0, 0, 0, 1);
+	--terminal-border: rgba(0, 150, 255, 0.3);
 	--button-config: white;
 	--button-config-bg-1: #3b82f6;
 	--button-config-bg-2: #2563eb;
+	--button-create: white;
+	--button-create-bg-1: #22c55e;
+	--button-create-bg-2: #16a34a;
+	--button-create-shadow: rgba(34, 197, 94, 0.4);
 	--button-start: white;
 	--button-start-bg-1: #22c55e;
 	--button-start-bg-2: #16a34a;
@@ -83,14 +90,16 @@
 	--input-focus-shadow: rgba(0, 150, 255, 0.59);
 	--status-running: #22c55e;
 	--status-starting: #facc15;
-	--status-stopped: #ef4444;
+	--status-stopped: #ed8d70;
 	--status-stopping: #f97316;
-	--status-good-bg-1: #22c55e;
-	--status-good-bg-2: #9af3bb;
-	--status-warning-bg-1: #c59722;
-	--status-warning-bg-2: #f3cf9a;
-	--status-critical-bg-1: #c52222;
-	--status-critical-bg-2: #f39a9a;
+	--status-critical: #e13a3a;
+	--status-good-bg-1: #034a1d;
+	--status-good-bg-2: #558868;
+	--status-warning-bg-1: #5c460c;
+	--status-warning-bg-2: #8a7658;
+	--status-critical-bg-1: #530a0a;
+	--status-critical-bg-2: #634141;
+	--graph-bg: #292929;
 }
 
 
@@ -293,19 +302,28 @@ h4 {
 .content-header-inner {
 	padding: 1.5rem;
 	background-color:var(--header-bg-2);
+	display: flex;
+	flex-wrap: wrap;
 }
 
-.content-header h2 {
+.content-header-inner h2 {
 	display: flex;
 	align-items: center;
 	gap: 0.75rem;
+	flex: 2;
 }
 
-.content-header p {
+.content-header-inner .content-header-buttons {
+	flex: 1;
+	text-align: right;
+}
+
+.content-header-inner p {
 	color: var(--header-content);
 	font-size: 1rem;
 	font-weight: 300;
 	letter-spacing: 1px;
+	flex: 3 100%;
 }
 
 .content-body {
@@ -353,6 +371,19 @@ table tbody tr:nth-child(even) {
 table td {
 	padding: 0.5rem 1rem;
 	color: var(--table);
+}
+
+pre.terminal {
+	color: var(--terminal);
+	background: var(--terminal-bg);
+	border: 1px solid var(--terminal-border);
+	border-radius: 0.5rem;
+	padding: 1rem;
+	overflow: scroll;
+}
+pre.terminal code {
+	white-space: pre-line;
+	font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
 
 
@@ -476,6 +507,14 @@ button.action-configure {
 }
 button.action-configure:hover {
 	box-shadow: 0 4px 8px var(--button-config-shadow);
+}
+
+button.action-create {
+	background: linear-gradient(135deg, var(--button-create-bg-1) 0%, var(--button-create-bg-2) 100%);
+	color: var(--button-create);
+}
+button.action-create:hover {
+	box-shadow: 0 4px 8px var(--button-create-shadow);
 }
 
 button.action-start {
@@ -611,6 +650,10 @@ button.action-cancel:hover {
 	animation: blinker 4s infinite;
 }
 
+#services-table td.status.status-error {
+	color: var(--status-critical);
+}
+
 /* ==========================
    Application/Host cards
    ========================== */
@@ -686,12 +729,13 @@ button.action-cancel:hover {
 	text-align: right;
 }
 
-.application-card .app-name,
-.host-card .host-name {
-	display: flex;
+.application-card .app-title,
+.host-card .host-title {
+	display: grid;
 	align-items: center;
 	gap: 1rem;
 	margin-bottom: 1rem;
+	grid-template-areas: 'logo name' 'logo desc';
 }
 
 .application-card .app-icon,
@@ -702,6 +746,7 @@ button.action-cancel:hover {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	grid-area: logo;
 }
 .application-card .app-icon {
 	background-color: var(--table-header-bg-2);
@@ -718,6 +763,16 @@ button.action-cancel:hover {
 .application-card .app-icon i,
 .host-card .host-icon i {
 	color: var(--table-header);
+}
+
+.application-card .app-name,
+.host-card .host-name {
+	grid-area: name;
+}
+
+.application-card .app-desc,
+.host-card .host-desc {
+	grid-area: desc;
 }
 
 .application-card .host-actions button {
@@ -781,6 +836,68 @@ button.action-cancel:hover {
 	position: relative;
 	z-index: 2;
 	text-align: center;
+}
+
+.host-card .host-metrics {
+	display: flex;
+	gap: 1rem;
+}
+.host-card .host-metrics .metric-item {
+	flex: 1;
+}
+.host-card .host-metrics .metric-label {
+	text-align: center;
+}
+
+.host-card .mem-graph {
+	width: 100%;
+	height: 80px;
+	border-radius: 8px;
+	background: repeating-linear-gradient(
+		0deg,
+		var(--graph-bg) 0,
+		var(--graph-bg) 5px,
+		transparent 5px,
+		transparent 6px
+	);
+	border: 1px solid rgba(0, 150, 255, 0.1);
+	overflow: hidden;
+	position: relative;
+}
+.host-card .mem-graph .mem-used {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: 100%;
+	transition: height 0.5s ease;
+}
+.host-card .mem-graph.usage-status-normal .mem-used {
+	background: linear-gradient(0deg, var(--status-good-bg-1), var(--status-good-bg-2));
+}
+.host-card .mem-graph.usage-status-warning .mem-used {
+	background: linear-gradient(0deg, var(--status-warning-bg-1), var(--status-warning-bg-2));
+}
+.host-card .mem-graph.usage-status-critical .mem-used {
+	background: linear-gradient(0deg, var(--status-critical-bg-1), var(--status-critical-bg-2));
+}
+
+.cpu-speedometer .gauge-bg {
+	stroke: var(--graph-bg);
+}
+.cpu-speedometer .gauge-arc {
+	transition: all 0.5s ease;
+}
+.cpu-speedometer .gauge-needle {
+	transition: all 0.5s ease;
+}
+.cpu-speedometer .bg-start {
+	stop-color: var(--status-good-bg-1);
+}
+.cpu-speedometer .bg-mid {
+	stop-color: var(--status-warning-bg-1);
+}
+.cpu-speedometer .bg-stop {
+	stop-color: var(--status-critical-bg-1);
 }
 
 /* ==========================
@@ -1250,6 +1367,49 @@ button.action-cancel:hover {
 	gap: 0.5rem;
 }
 
+#logsContainer {
+	overflow-y: auto;
+	background: var(--content-bg);
+	border: 1px solid var(--content-border);
+	font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+	font-size: 0.9rem;
+	color: var(--content);
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	box-shadow: 0 20px 60px var(--content-shadow);
+	height: calc(100vh - (4em + 210px));
+}
+
+/* ==========================
+   Host List
+   ========================== */
+
+#hostsList .host-row {
+	display: grid;
+	grid-template-columns: 1fr 320px 160px;
+	gap: 16px;
+	align-items: center;
+	padding: 12px;
+	border-radius: 8px;
+}
+#hostsList .host-meta {
+	position: relative;
+	display:flex;
+	flex-direction: column;
+	gap:6px;
+	height: 100%;
+}
+#hostsList .host-meta .host-title {
+	display:flex;
+	gap:8px;
+	align-items:baseline;
+	z-index: 2;
+}
+#hostsList .host-meta .host-os {
+	z-index: 2;
+}
+
 
 /* ==========================
    Modals
@@ -1340,8 +1500,86 @@ button.action-cancel:hover {
 }
 
 /* ==========================
-   Responsive
+   Theme selector (bottom-left floating)
    ========================== */
+.theme-selector {
+	position: fixed;
+	left: 1rem;
+	bottom: 1rem;
+	z-index: 10050;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.5rem;
+}
+
+.theme-selector-toggle {
+	width: 44px;
+	height: 44px;
+	border-radius: 999px;
+	background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
+	color: white;
+	border: 1px solid rgba(0,0,0,0.15);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	box-shadow: 0 6px 18px rgba(0,150,255,0.18);
+	transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.theme-selector-toggle:focus {
+	outline: none;
+	box-shadow: 0 6px 24px rgba(0,150,255,0.28);
+	transform: translateY(-2px);
+}
+
+.theme-panel {
+	display: none;
+	flex-direction: column;
+	gap: 0.35rem;
+	padding: 0.6rem;
+	border-radius: 10px;
+	background: var(--content-bg);
+	border: 1px solid var(--content-border);
+	box-shadow: 0 10px 40px var(--content-shadow);
+	backdrop-filter: blur(10px);
+	min-width: 120px;
+}
+
+.theme-panel.show {
+	display: flex;
+}
+
+.theme-item {
+	padding: 0.45rem 0.8rem;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--content);
+	cursor: pointer;
+	font-weight: 600;
+	letter-spacing: 0.8px;
+	transition: all 0.2s ease;
+	border: 1px solid transparent;
+	text-align: left;
+}
+
+.theme-item:hover, .theme-item:focus {
+	background: var(--content-hover-bg);
+	border: 1px solid var(--content-hover-border);
+	color: var(--content-hover);
+	text-shadow: 0 0 8px rgba(0, 150, 255, 0.3);
+	outline: none;
+}
+
+@media (max-width: 420px) {
+	.theme-selector {
+		left: 0.5rem;
+		bottom: 0.5rem;
+	}
+	.theme-panel {
+		min-width: 100px;
+	}
+}
 @media (max-width: 1200px) {
 	.main-container {
 		grid-template-columns: 300px 1fr;
@@ -1443,6 +1681,3 @@ button.action-cancel:hover {
 		font-size: 0.9rem;
 	}
 }
-
-
-

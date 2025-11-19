@@ -11,7 +11,7 @@
     <script src="/common.js"></script>
 </head>
 <body>
-    <div id="nav-placeholder"></div>
+<%- include('partials/nav.ejs') %>
 
     <div class="files-container">
         <div class="files-layout">
@@ -209,7 +209,7 @@
     <div id="deleteConfirmModal" class="modal" style="display: none;">
         <div class="modal-overlay"></div>
         <div class="modal-content">
-            <div class="modal-header" style="background: rgba(220, 38, 38, 0.2);">
+            <div class="modal-header">
                 <h3><i class="fas fa-exclamation-triangle"></i> Confirm Deletion</h3>
                 <button class="modal-close" id="closeDeleteModal">
                     <i class="fas fa-times"></i>
@@ -220,7 +220,6 @@
                     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
                         <i class="fas fa-exclamation-triangle" style="font-size: 2.5rem; color: #ef4444;"></i>
                         <div>
-                            <h4 style="color: #ef4444; margin: 0 0 0.5rem 0; font-size: 1.1rem;">⚠️ WARNING - THIS ACTION CANNOT BE UNDONE! ⚠️</h4>
                             <p style="color: #fca5a5; margin: 0; font-size: 0.9rem;">This will permanently delete the item and all its contents!</p>
                         </div>
                     </div>
@@ -230,22 +229,13 @@
                     <div id="deleteItemInfo" style="background: rgba(0, 150, 255, 0.1); padding: 1rem; border-radius: 8px; font-family: 'Courier New', monospace; color: #87ceeb; margin-top: 0.5rem;">
                     </div>
                 </div>
-                <div class="form-group" id="recursiveWarning" style="display: none;">
-                    <div style="background: rgba(220, 38, 38, 0.2); border: 1px solid rgba(220, 38, 38, 0.4); border-radius: 8px; padding: 1rem; color: #fca5a5;">
-                        <i class="fas fa-folder-open"></i> <strong>RECURSIVE DELETE:</strong> This folder and ALL files/subfolders inside will be permanently deleted!
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="deleteConfirmText" style="color: #ef4444;">Type <strong>"DELETE"</strong> to confirm:</label>
-                    <input type="text" id="deleteConfirmText" placeholder="Type DELETE to confirm..." style="border-color: rgba(220, 38, 38, 0.5);" />
-                </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-nav" style="background: rgba(220, 38, 38, 0.2); border-color: rgba(220, 38, 38, 0.5); color: #ef4444;" id="confirmDelete" disabled>
+                <button class="action-remove" id="confirmDelete">
                     <i class="fas fa-trash"></i>
                     Delete Permanently
                 </button>
-                <button class="btn-nav btn-secondary" id="cancelDelete">
+                <button class="action-cancel" id="cancelDelete">
                     <i class="fas fa-times"></i>
                     Cancel
                 </button>
@@ -336,11 +326,7 @@
         </div>
     </div>
 
-    <script>
-        // @todo Implement this in settings
-        let theme = localStorage.getItem("theme") || 'default';
-        document.body.classList.add('theme-' + theme);
-    </script>
-    <script src="/files.js"></script>
+<%- include('partials/theme-selector.ejs') %>
+<script src="/files.js"></script>
 </body>
 </html>

@@ -64,13 +64,22 @@ function populateServicesTable(servicesWithStats) {
 			actionButtons = [],
 			appIcon = renderAppIcon(app_guid);
 
+		if (service.pre_exec || service.start_exec) {
+			// Service has run in the past, so it should have log files available!
+			actionButtons.push(`
+<button data-href="/service/logs/${app_guid}/${host.host}/${service.service}" class="link-control action-logs">
+	<i class="fas fa-align-justify"></i> Logs
+</button>`);
+		}
+
 		if (service.status === 'running') {
 			statusIcon = '<i class="fas fa-check-circle"></i>';
 			actionButtons.push(`
 <button data-host="${host.host}" data-service="${service.service}" data-action="stop" data-guid="${app_guid}" class="service-control action-stop">
 	<i class="fas fa-stop"></i> Stop
 </button>`);
-		} else if (service.status === 'stopped') {
+		}
+		else if (service.status === 'stopped') {
 			statusIcon = '<i class="fas fa-times-circle"></i>';
 			actionButtons.push(`
 <button data-href="/service/configure/${app_guid}/${host.host}/${service.service}" class="link-control action-configure">
@@ -80,9 +89,18 @@ function populateServicesTable(servicesWithStats) {
 <button data-host="${host.host}" data-service="${service.service}" data-action="start" data-guid="${app_guid}" class="service-control action-start">
 	<i class="fas fa-play"></i> Start
 </button>`);
-		} else if (service.status === 'starting' || service.status === 'stopping') {
+		}
+		else if (service.status === 'starting') {
 			statusIcon = '<i class="fas fa-sync-alt fa-spin"></i>';
-		} else {
+			actionButtons.push(`
+<button data-host="${host.host}" data-service="${service.service}" data-action="stop" data-guid="${app_guid}" class="service-control action-stop">
+	<i class="fas fa-stop"></i> Stop
+</button>`);
+		}
+		else if (service.status === 'stopping') {
+			statusIcon = '<i class="fas fa-sync-alt fa-spin"></i>';
+		}
+		else {
 			statusIcon = '<i class="fas fa-question-circle"></i>';
 		}
 
@@ -113,8 +131,23 @@ function populateServicesTable(servicesWithStats) {
 				val = renderHostName(host.host);
 			}
 			else if (field === 'status') {
-				val = statusIcon + ' ' + service[field].toUpperCase();
-				cell.className = field + ' status-' + service[field];
+				// Check if this service has an exec/pre-exec error
+				let error = false;
+				if (service.pre_exec && service.pre_exec.status !== null && service.pre_exec.status !== 0) {
+					error = true;
+				}
+				if (service.start_exec && service.start_exec.status !== null && service.start_exec.status !== 0) {
+					error = true;
+				}
+
+				if (error) {
+					val = statusIcon + ' ' + 'ERROR';
+					cell.className = field + ' status-error';
+				}
+				else {
+					val = statusIcon + ' ' + service[field].toUpperCase();
+					cell.className = field + ' status-' + service[field];
+				}
 			} else if (field === 'players') {
 				val = service.player_count || 0;
 				if (service.max_players) {
@@ -160,26 +193,6 @@ async function loadAllServicesAndStats() {
 	});
 }
 
-function serviceAction(guid, host, service, action) {
-	fetch(`/api/service/${action}`, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json'
-		},
-		body: JSON.stringify({
-			guid: guid,
-			host: host,
-			service: service
-		})
-	})
-		.then(response => {
-			console.debug(response);
-		})
-		.catch(error => {
-			console.error('Network error:', error);
-		});
-}
-
 /**
  *
  * @param {Object.<string, AppData>} applications
@@ -214,11 +227,11 @@ function displayApplications(applications) {
 		html += `
 			<div class="application-card">
 				${thumbnail ? thumbnail : ''}
-				<div class="app-name">
+				<div class="app-title">
 					<div class="app-icon">
 						${icon}
 					</div>
-					<div style="flex: 1;">
+					<div class="app-name">
 						<h4>${displayName}</h4>
 					</div>
 				</div>

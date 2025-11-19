@@ -23,6 +23,20 @@
  */
 
 /**
+ * Represents the details of a start/pre-start execution result from systemd
+ *
+ * @typedef {Object} ServiceExecResult
+ * @property {string} arguments Raw arguments passed to the service handler
+ * @property {string,null} code Exit code/message of the execution
+ * @property {string} path Working path of the application when executed
+ * @property {string} pid Process ID of the execution
+ * @property {number} runtime Time taken for the execution in seconds, or NULL if still running
+ * @property {number,null} start_time Timestamp of when the execution started
+ * @property {number} status Numeric status code of the execution result, 0 means success
+ * @property {number,null} stop_time Timestamp of when the execution stopped, or NULL if still running
+ */
+
+/**
  * Represents the details of a service.
  *
  * @typedef {Object} ServiceData
@@ -37,7 +51,8 @@
  * @property {number} port Port number the service is using.
  * @property {number} player_count Current number of players connected to the service.
  * @property {number} max_players Maximum number of players allowed on the service.
- *
+ * @property {ServiceExecResult,null} pre_exec Details of the last start execution attempt.
+ * @property {ServiceExecResult,null} start_exec Details of the last stop execution attempt.
  */
 
 /**
@@ -84,6 +99,20 @@ let applicationData = null;
  * @type {Object<string, HostData>}
  */
 let hostData = null;
+
+/**
+ * Application GUID of the currently loaded application.
+ *
+ * @type {string|null}
+ */
+let loadedApplication = null;
+
+/**
+ * Host identifier of the currently loaded host.
+ *
+ * @type {string|null}
+ */
+let loadedHost = null;
 
 /**
  * Fetches the list of services from the backend API.
@@ -167,10 +196,6 @@ async function fetchApplications() {
 
 async function fetchHosts() {
 	return new Promise((resolve, reject) => {
-		if (hostData) {
-			return resolve(hostData);
-		}
-
 		fetch('/api/hosts', {
 			method: 'GET',
 			headers: {
@@ -257,4 +282,117 @@ function formatFileSize(bytes) {
 	const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
 	return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+async function serviceAction(guid, host, service, action) {
+	return new Promise((resolve, reject) => {
+		fetch(`/api/service/control/${guid}/${host}/${service}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				action: action
+			})
+		})
+			.then(response => response.json())
+			.then(response => {
+				resolve(response);
+			})
+			.catch(error => {
+				reject(error);
+			});
+	});
+}
+
+/**
+ * Replace all placeholders in the document with application-specific data.
+ *
+ * @param {AppData} app
+ */
+function replaceAppPlaceholders(app) {
+	// Automatic replacements of the content
+	document.querySelectorAll('.app-name-placeholder').forEach(el => {
+		el.innerHTML = app.title;
+	});
+
+	if (document.body.dataset.useAppBackground && app.image) {
+		document.body.style.backgroundImage = `url(${app.image})`;
+	}
+
+	if (
+		document.querySelector('.content-header') &&
+		document.querySelector('.content-header').dataset.useAppHeader &&
+		app.header
+	) {
+		document.querySelector('.content-header').style.backgroundImage = `url(${app.header})`;
+	}
+}
+
+/**
+ * Replace all placeholders in the document with application-specific data.
+ *
+ * @param {HostData} host
+ */
+function replaceHostPlaceholders(host) {
+	// Automatic replacements of the content
+	document.querySelectorAll('.host-name-placeholder').forEach(el => {
+		el.innerHTML = host.hostname;
+	});
+}
+
+/**
+ * Load application data for the given GUID.
+ *
+ * @param {string} guid
+ * @returns {Promise<void>}
+ */
+async function loadApplication(guid) {
+	return new Promise((resolve, reject) => {
+		fetchApplications()
+			.then(applications => {
+				const app = applications[guid] || null;
+
+				if (!app) {
+					return reject('Application not found.');
+				}
+
+				loadedApplication = guid;
+
+				// Replace content from application
+				replaceAppPlaceholders(app);
+				resolve();
+			})
+			.catch(error => {
+				reject(error);
+			});
+	});
+}
+
+/**
+ * Load host data for the given host identifier.
+ *
+ * @param {string} host
+ * @returns {Promise<unknown>}
+ */
+async function loadHost(host) {
+	return new Promise((resolve, reject) => {
+		fetchHosts()
+			.then(hosts => {
+				const hostInfo = hosts[host] || null;
+
+				if (!hostInfo) {
+					return reject('Host not found.');
+				}
+
+				loadedHost = host;
+
+				// Replace content from application
+				replaceHostPlaceholders(hostInfo);
+				resolve();
+			})
+			.catch(error => {
+				reject(error);
+			});
+	});
 }

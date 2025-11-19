@@ -90,7 +90,7 @@ function buildOptionsForm(app_guid, host, service, options) {
 			}
 
 			// Send update to backend
-			fetch(`/api/service/${app_guid}/${host}/${service}/configs`, {
+			fetch(`/api/service/configs/${app_guid}/${host}/${service}`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -109,15 +109,6 @@ function buildOptionsForm(app_guid, host, service, options) {
 	});
 }
 
-
-// Load navigation component
-fetch('/components/nav')
-	.then(response => response.text())
-	.then(html => {
-		document.getElementById('nav-placeholder').innerHTML = html;
-	})
-	.catch(error => console.error('Error loading navigation:', error));
-
 /**
  * Primary handler to load the application on page load
  */
@@ -126,31 +117,11 @@ window.addEventListener('DOMContentLoaded', () => {
 	const [app_guid, host, service] = window.location.pathname.substring(19).split('/'),
 		configurationContainer = document.getElementById('configurationContainer');
 
-	fetchApplications()
-		.then(applications => {
-			const app = applications[app_guid] || null;
-
-			if (!app) {
-				configurationContainer.innerHTML = '<div class="alert alert-danger" role="alert">Application not found.</div>';
-				return;
-			}
-
-			console.debug(app);
-
-			// Replace content from application
-			document.querySelectorAll('.app-name-placeholder').forEach(el => {
-				el.innerHTML = app.title;
-			});
-			document.querySelectorAll('.host-name-placeholder').forEach(el => {
-				el.innerHTML = host;
-			});
-			if (app.image) {
-				document.body.style.backgroundImage = `url(${app.image})`;
-			}
-			if (app.header) {
-				document.querySelector('.content-header').style.backgroundImage = `url(${app.header})`;
-			}
-
+	Promise.all([
+		loadApplication(app_guid),
+		loadHost(host)
+	])
+		.then(() => {
 			fetchService(app_guid, host, service)
 				.then(serviceData => {
 					document.querySelectorAll('.service-service-placeholder').forEach(el => {
@@ -158,7 +129,7 @@ window.addEventListener('DOMContentLoaded', () => {
 					});
 
 					// Pull the configs from the service
-					fetch(`/api/service/${app_guid}/${host}/${service}/configs`, {
+					fetch(`/api/service/configs/${app_guid}/${host}/${service}`, {
 						method: 'GET',
 						headers: {
 							'Content-Type': 'application/json'
@@ -173,5 +144,9 @@ window.addEventListener('DOMContentLoaded', () => {
 							}
 						});
 				});
+		})
+		.catch(e => {
+			console.error(e);
+			configurationContainer.innerHTML = '<div class="alert alert-danger" role="alert">Error loading application or host data.</div>';
 		});
 });

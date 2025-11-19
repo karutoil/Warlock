@@ -573,13 +573,12 @@ async function saveFile() {
 	editorInfo.textContent = 'Saving file...';
 
 	try {
-		const response = await fetch('/save-file', {
+		const response = await fetch(`/api/file/${host}?path=${currentEditFile.path}`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
-				path: currentEditFile.path,
 				content: editorTextarea.value
 			})
 		});
@@ -728,11 +727,6 @@ document.getElementById('closeRenameModal').addEventListener('click', () => {
 	renameItemData = null;
 });
 
-// Enable delete button when user types "DELETE"
-document.getElementById('deleteConfirmText').addEventListener('input', (e) => {
-	const confirmBtn = document.getElementById('confirmDelete');
-	confirmBtn.disabled = e.target.value !== 'DELETE';
-});
 
 // Context menu handlers
 document.getElementById('contextRename').addEventListener('click', showRenameModal);
@@ -772,26 +766,21 @@ async function createFolder() {
 		return;
 	}
 
-	const folderPath = currentPath + '/' + folderName;
-
-	try {
-		const response = await fetch('/create-folder', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ path: folderPath })
+	fetch(`/api/file/${host}?path=${currentPath}&name=${folderName}&isdir=1`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' }
+	}).then(response => response.json())
+		.then(result => {
+			if (result.success) {
+				createFolderModal.style.display = 'none';
+				loadDirectory(currentPath); // Refresh current directory
+			} else {
+				alert(`Error creating folder: ${result.error}`);
+			}
+		})
+		.catch(error => {
+			alert(`Network error: ${error.message}`);
 		});
-
-		const result = await response.json();
-
-		if (result.success) {
-			createFolderModal.style.display = 'none';
-			loadDirectory(currentPath); // Refresh current directory
-		} else {
-			alert(`Error creating folder: ${result.error}`);
-		}
-	} catch (error) {
-		alert(`Network error: ${error.message}`);
-	}
 }
 
 /**
@@ -803,10 +792,10 @@ async function createFile() {
 	const fileName = document.getElementById('fileName').value.trim();
 	const fileContent = document.getElementById('fileContent').value;
 
-	fetch(`/api/file/${host}`, {
+	fetch(`/api/file/${host}?path=${currentPath}&name=${fileName}`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ path: currentPath, name: fileName, content: fileContent })
+		body: JSON.stringify({ content: fileContent })
 	})
 		.then(response => response.json())
 		.then(result => {
@@ -833,30 +822,20 @@ function confirmDelete(itemPath, itemName, isDirectory, event) {
 
 	const deleteModal = document.getElementById('deleteConfirmModal');
 	const deleteItemInfo = document.getElementById('deleteItemInfo');
-	const recursiveWarning = document.getElementById('recursiveWarning');
-	const confirmBtn = document.getElementById('confirmDelete');
-	const confirmInput = document.getElementById('deleteConfirmText');
-
-	// Reset confirmation input and button
-	confirmInput.value = '';
-	confirmBtn.disabled = true;
 
 	// Show item info
 	deleteItemInfo.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <i class="fas fa-${isDirectory ? 'folder' : 'file'}" style="color: #0096ff;"></i>
-                    <strong>${itemName}</strong>
-                </div>
-                <div style="font-size: 0.85rem; color: #64748b;">
-                    Path: ${itemPath}
-                </div>
-                <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.5rem;">
-                    Type: ${isDirectory ? 'Folder (Recursive Delete)' : 'File'}
-                </div>
-            `;
-
-	// Show recursive warning for directories
-	recursiveWarning.style.display = isDirectory ? 'block' : 'none';
+		<div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+			<i class="fas fa-${isDirectory ? 'folder' : 'file'}" style="color: #0096ff;"></i>
+			<strong>${itemName}</strong>
+		</div>
+		<div style="font-size: 0.85rem; color: #64748b;">
+			Path: ${itemPath}
+		</div>
+		<div style="font-size: 0.85rem; color: #64748b; margin-top: 0.5rem;">
+			Type: ${isDirectory ? 'Folder (Recursive Delete)' : 'File'}
+		</div>
+	`;
 
 	deleteModal.style.display = 'flex';
 }
@@ -864,28 +843,26 @@ function confirmDelete(itemPath, itemName, isDirectory, event) {
 async function performDelete() {
 	if (!deleteItemData) return;
 
-	try {
-		const response = await fetch('/delete-item', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				path: deleteItemData.path,
-				isDirectory: deleteItemData.isDirectory
-			})
-		});
+	document.getElementById('deleteConfirmModal').style.display = 'none';
 
-		const result = await response.json();
-
-		if (result.success) {
-			document.getElementById('deleteConfirmModal').style.display = 'none';
-			deleteItemData = null;
-			loadDirectory(currentPath); // Refresh current directory
-		} else {
-			alert(`Error deleting item: ${result.error}`);
+	fetch(`/api/file/${host}?path=${deleteItemData.path}`, {
+		method: 'DELETE',
+		headers: {
+			'Content-Type': 'application/json'
 		}
-	} catch (error) {
-		alert(`Network error: ${error.message}`);
-	}
+	})
+		.then(response => response.json())
+		.then(result => {
+			console.debug(result);
+			deleteItemData = null;
+
+			if (result.success) {
+				loadDirectory(currentPath); // Refresh current directory
+			}
+			else {
+				alert(`Error deleting item: ${result.error}`);
+			}
+		});
 }
 
 // Context menu and three-dot menu functionality
@@ -1024,8 +1001,8 @@ async function startUpload() {
 		formData.append('path', currentPath);
 
 		try {
-			const response = await fetch('/upload-file', {
-				method: 'POST',
+			const response = await fetch(`/api/file/${host}`, {
+				method: 'PUT',
 				body: formData
 			});
 
@@ -1348,13 +1325,6 @@ window.addEventListener('popstate', e => {
 	}
 });
 
-// Load navigation component
-fetch('/components/nav')
-	.then(response => response.text())
-	.then(html => {
-		document.getElementById('nav-placeholder').innerHTML = html;
-	})
-	.catch(error => console.error('Error loading navigation:', error));
 
 // Load application paths
 loadApplicationPaths();

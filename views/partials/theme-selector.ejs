@@ -1,0 +1,99 @@
+<div id="theme-selector" class="theme-selector">
+	<div id="theme-panel" class="theme-panel" role="menu" aria-hidden="true">
+		<button class="theme-item" data-theme="default" role="menuitem">DEFAULT</button>
+		<button class="theme-item" data-theme="red" role="menuitem">RED</button>
+	</div>
+
+	<button class="theme-selector-toggle" aria-expanded="false" aria-controls="theme-panel" title="Change Theme">
+		<i class="fas fa-palette" aria-hidden="true"></i>
+		<span class="sr-only">Change theme</span>
+	</button>
+
+</div>
+
+<script>
+// ==========================
+// Theme selector initialization
+// ==========================
+(function () {
+    if (window.__themeSelectorInitialized) return;
+    window.__themeSelectorInitialized = true;
+
+    function applyTheme(name) {
+        if (!name) return;
+
+        const currentTheme = localStorage.getItem('theme');
+
+        if (currentTheme) {
+            document.body.classList.remove('theme-' + currentTheme);
+        }
+        document.body.classList.add('theme-' + name);
+        localStorage.setItem('theme', name);
+    }
+
+    function setTheme() {
+        let theme = null;
+        try { theme = localStorage.getItem('theme'); } catch (e) { /* ignore */ }
+        if (theme) document.body.classList.add('theme-' + theme);
+    }
+
+    function closePanel(panel, toggle) {
+        panel.classList.remove('show');
+        panel.setAttribute('aria-hidden', 'true');
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    function openPanel(panel, toggle) {
+        panel.classList.add('show');
+        panel.setAttribute('aria-hidden', 'false');
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        // focus first item for keyboard users
+        const first = panel.querySelector('.theme-item');
+        if (first) first.focus();
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        setTheme();
+
+        const selector = document.getElementById('theme-selector');
+        if (!selector) return;
+        const toggle = selector.querySelector('.theme-selector-toggle');
+        const panel = selector.querySelector('.theme-panel');
+        if (!toggle || !panel) return;
+
+        // Toggle click
+        toggle.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            if (panel.classList.contains('show')) {
+                closePanel(panel, toggle);
+            } else {
+                openPanel(panel, toggle);
+            }
+        });
+
+        // Theme selection
+        panel.addEventListener('click', function (ev) {
+            const btn = ev.target.closest('.theme-item');
+            if (!btn) return;
+            const theme = btn.getAttribute('data-theme');
+            if (theme) {
+                applyTheme(theme);
+            }
+        });
+
+        // Close on escape
+        document.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape') {
+                closePanel(panel, toggle);
+            }
+        });
+
+        // Click outside to close
+        document.addEventListener('click', function (ev) {
+            if (!selector.contains(ev.target)) {
+                closePanel(panel, toggle);
+            }
+        });
+    });
+})();
+</script>

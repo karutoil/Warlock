@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Warlock - First Setup</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+	<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="/frontend.css">
+	<link rel="stylesheet" href="/themes.css">
+	<script src="/common.js"></script>
+</head>
+<body>
+
+<div class="main-container" style="grid-template-columns: 1fr; max-width: 800px;">
+	<main class="content-area">
+		<div class="content-header">
+			<div class="content-header-inner">
+				<h2>
+					<i class="fas fa-flag-checkered"></i>
+					Get Started
+				</h2>
+				<p>Create your first account to get started</p>
+			</div>
+		</div>
+
+		<div class="content-body">
+			<% if (typeof(error) !== 'undefined') { %>
+				<div class="error-message">
+					<i class="fas fa-exclamation-triangle"></i>
+					<strong>Error:</strong> <%= error %>
+				</div>
+			<% } %>
+
+			<form action="/install" method="POST">
+				<input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+				<div class="form-group">
+					<label for="admin-username">Admin Username</label>
+					<input name="username" type="text" id="admin-username" placeholder="Enter admin username">
+				</div>
+
+				<div class="form-group">
+					<label for="admin-password">Admin Password</label>
+					<input name="password" type="password" id="admin-password" placeholder="Enter admin password">
+				</div>
+
+				<div class="form-group">
+					<label for="admin-password-confirm">Confirm Password</label>
+					<input name="confirm" type="password" id="admin-password-confirm" placeholder="Confirm admin password">
+				</div>
+
+				<button type="submit" class="action-save">Create Admin Account</button>
+			</form>
+		</div>
+	</main>
+</div>
+
+<%- include('partials/theme-selector.ejs') %>
+
+<script src="/install.js"></script>
+</body>
+</html>

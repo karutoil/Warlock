@@ -13,6 +13,6 @@
   repo: BitsNBytes25/VEIN-Dedicated-Server
   installer: dist/installer.sh
   header:
-  image:
+  image: https://files.eval.bz/warlock/vein-1280x720.jpg
   icon: https://files.eval.bz/warlock/vein-128x128.png
   thumbnail: https://files.eval.bz/warlock/vein_616x353.jpg

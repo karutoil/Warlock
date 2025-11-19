@@ -11,7 +11,7 @@
     <script src="/common.js"></script>
 </head>
 <body>
-    <div id="nav-placeholder"></div>
+<%- include('partials/nav.ejs') %>
 
     <div class="main-container" style="grid-template-columns: 1fr; max-width: 1600px;">
         <main class="content-area">
@@ -50,11 +50,7 @@
     </div>
 
 
-    <script>
-        // @todo Implement this in settings
-        let theme = localStorage.getItem("theme") || 'default';
-        document.body.classList.add('theme-' + theme);
-    </script>
-    <script src="/files_noserver.js"></script>
+<%- include('partials/theme-selector.ejs') %>
+<script src="/files_noserver.js"></script>
 </body>
 </html>

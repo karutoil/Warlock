@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warlock - Add Host</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/frontend.css">
+    <link rel="stylesheet" href="/themes.css">
+    <script src="/common.js"></script>
+</head>
+<body>
+
+<%- include('partials/nav.ejs') %>
+
+<div class="main-container" style="grid-template-columns: 1fr; max-width: 800px;">
+    <main class="content-area">
+        <div class="content-header">
+            <div class="content-header-inner">
+                <h2>
+                    <i class="fas fa-server"></i>
+                    Add Host
+                </h2>
+                <p>Add a server host to be managed</p>
+            </div>
+        </div>
+
+        <div class="content-body">
+            <p>
+                In order for Warlock to install game servers, you first must define what server IP addresses or hostnames
+                it should manage.
+            </p>
+
+
+            <% if (typeof(error) !== 'undefined') { %>
+                <% if (typeof(localKey) !== 'undefined') { %>
+                    <!-- An error occurred but we have a local key to show -->
+                    <pre class="terminal"><code># Please connect to the host as ROOT and run the following command:
+# If you need to, switch to root with 'sudo su -' first.
+#
+# Once ran, try to re-add this host.
+
+[ -d /root/.ssh ] || mkdir /root/.ssh; echo "" >> /root/.ssh/authorized_keys; echo "<%= localKey %>" >> /root/.ssh/authorized_keys; chmod og-rwx /root/.ssh -R
+
+                    </code></pre>
+                <% } else { %>
+                    <div class="error-message">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Error:</strong> <%= error %>
+                    </div>
+                <% } %>
+            <% } %>
+
+            <form action="/host/add" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+                <div class="form-group">
+                    <label for="host-ip">Hostname or IP Address</label>
+                    <% if (typeof(ip) !== 'undefined') { %>
+                        <input name="ip" type="text" id="host-ip" value="<%= ip %>" placeholder="localhost or 1.2.3.4">
+                    <% } else { %>
+                        <input name="ip" type="text" id="host-ip" placeholder="localhost or 1.2.3.4">
+                    <% } %>
+                </div>
+
+                <button type="submit" class="action-save">Add Host</button>
+            </form>
+        </div>
+    </main>
+</div>
+
+<%- include('partials/theme-selector.ejs') %>
+
+<script src="/install.js"></script>
+</body>
+</html>
