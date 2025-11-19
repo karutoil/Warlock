@@ -440,7 +440,7 @@ async function openFile(filePath, fileName) {
 				if (result.encoding === 'raw' && result.content) {
 					editFile(result);
 				}
-				else if(result.mimetype === 'inode/directory') {
+				else if (result.mimetype === 'inode/directory') {
 					loadDirectory(filePath);
 				}
 				else if (result.content) {
@@ -996,14 +996,14 @@ async function startUpload() {
 		const file = files[i];
 		uploadStatus.textContent = `Uploading ${file.name}... (${i + 1}/${files.length})`;
 
-		const formData = new FormData();
-		formData.append('file', file);
-		formData.append('path', currentPath);
-
 		try {
-			const response = await fetch(`/api/file/${host}`, {
+			// Send raw file content
+			const response = await fetch(`/api/file/${host}?path=${currentPath}/${file.name}`, {
 				method: 'PUT',
-				body: formData
+				headers: {
+					'Content-Type': 'application/octet-stream'
+				},
+				body: file
 			});
 
 			const result = await response.json();

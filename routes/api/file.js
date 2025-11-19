@@ -1,11 +1,11 @@
 const express = require('express');
-const {validate_session} = require("../../libs/validate_session.mjs");
-const {cmdRunner} = require("../../libs/cmd_runner.mjs");
-const {filePushRunner} = require("../../libs/file_push_runner.mjs");
+const { validate_session } = require("../../libs/validate_session.mjs");
+const { cmdRunner } = require("../../libs/cmd_runner.mjs");
+const { filePushRunner } = require("../../libs/file_push_runner.mjs");
 const path = require('path');
 const fs = require('fs');
-const {Host} = require('../../db');
-const {logger} = require('../../libs/logger.mjs');
+const { Host } = require('../../db');
+const { logger } = require('../../libs/logger.mjs');
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ router.get('/:host', validate_session, (req, res) => {
 	}
 	logger.info('Viewing file:', filePath);
 
-	Host.count({where: {ip: host}}).then(count => {
+	Host.count({ where: { ip: host } }).then(count => {
 		if (count === 0) {
 			return res.json({
 				success: false,
@@ -68,12 +68,12 @@ router.get('/:host', validate_session, (req, res) => {
 						name: path.basename(filePath),
 					});
 				})
-				.catch(e => {
-					return res.json({
-						success: false,
-						error: 'Cannot read file content'
+					.catch(e => {
+						return res.json({
+							success: false,
+							error: 'Cannot read file content'
+						});
 					});
-				});
 			}
 			else {
 				return res.json({
@@ -87,12 +87,12 @@ router.get('/:host', validate_session, (req, res) => {
 				})
 			}
 		})
-		.catch(e => {
-			return res.json({
-				success: false,
-				error: e.error.message
+			.catch(e => {
+				return res.json({
+					success: false,
+					error: e.error.message
+				});
 			});
-		});
 	});
 });
 
@@ -102,7 +102,7 @@ router.get('/:host', validate_session, (req, res) => {
 router.post('/:host', validate_session, (req, res) => {
 	let host = req.params.host,
 		path = req.query.path,
-		{content} = req.body,
+		{ content } = req.body,
 		name = req.query.name || null,
 		isDir = req.query.isdir || false;
 
@@ -144,10 +144,10 @@ router.post('/:host', validate_session, (req, res) => {
 
 	if (name) {
 		// If name and path are requested separately, combine them to perform file operations.
-		path = path.replace(/\/+$/,'') + '/' + name;
+		path = path.replace(/\/+$/, '') + '/' + name;
 	}
 
-	Host.count({where: {ip: host}}).then(count => {
+	Host.count({ where: { ip: host } }).then(count => {
 		if (count === 0) {
 			return res.json({
 				success: false,
@@ -165,13 +165,13 @@ router.post('/:host', validate_session, (req, res) => {
 					message: 'Directory created successfully'
 				});
 			})
-			.catch(e => {
-				logger.error('Create directory error:', e);
-				return res.json({
-					success: false,
-					error: `Cannot create directory: ${e.error.message}`
+				.catch(e => {
+					logger.error('Create directory error:', e);
+					return res.json({
+						success: false,
+						error: `Cannot create directory: ${e.error.message}`
+					});
 				});
-			});
 		}
 		else if (content) {
 			// Content was requested, save to a local /tmp file to transfer to the target server
@@ -189,17 +189,17 @@ router.post('/:host', validate_session, (req, res) => {
 					message: 'File saved successfully'
 				});
 			})
-			.catch(error => {
-				logger.error('Save file error:', error);
-				return res.json({
-					success: false,
-					error: `Cannot save file: ${error.message}`
+				.catch(error => {
+					logger.error('Save file error:', error);
+					return res.json({
+						success: false,
+						error: `Cannot save file: ${error.message}`
+					});
+				})
+				.finally(() => {
+					// Remove the temporary file
+					fs.unlinkSync(tempFile);
 				});
-			})
-			.finally(() => {
-				// Remove the temporary file
-				fs.unlinkSync(tempFile);
-			});
 		} else {
 			// No content supplied, that's fine!  We can still create an empty file.
 			let cmd = `touch "${path}" && chown $(stat -c%U "$(dirname "${path}")"):$(stat -c%U "$(dirname "${path}")") "${path}"`;
@@ -210,18 +210,78 @@ router.post('/:host', validate_session, (req, res) => {
 					message: 'File saved successfully'
 				});
 			})
-			.catch(e => {
-				logger.error('Create file error:', e);
-				return res.json({
-					success: false,
-					error: `Cannot create file: ${e.error.message}`
+				.catch(e => {
+					logger.error('Create file error:', e);
+					return res.json({
+						success: false,
+						error: `Cannot create file: ${e.error.message}`
+					});
 				});
-			});
 		}
 	});
 });
 
 // @todo Add a PUT method to push a binary file to the target host.
+router.put('/:host', validate_session, (req, res) => {
+	const host = req.params.host;
+	const filePath = req.query.path;
+
+	if (!filePath) {
+		return res.json({
+			success: false,
+			error: 'Please enter a file path'
+		});
+	}
+
+	Host.count({ where: { ip: host } }).then(count => {
+		if (count === 0) {
+			return res.json({
+				success: false,
+				error: 'Requested host is not in the configured HOSTS list'
+			});
+		}
+
+		logger.info('Uploading binary file:', filePath);
+
+		// Create a temporary file
+		const tempFile = `/tmp/warlock_upload_${Date.now()}.tmp`;
+		const writeStream = fs.createWriteStream(tempFile);
+
+		req.pipe(writeStream);
+
+		writeStream.on('finish', () => {
+			// Push the temporary file to the target device
+			filePushRunner(host, tempFile, filePath).then(() => {
+				logger.info('File uploaded successfully:', filePath);
+				res.json({
+					success: true,
+					message: 'File uploaded successfully'
+				});
+			})
+				.catch(error => {
+					logger.error('Upload file error:', error);
+					return res.json({
+						success: false,
+						error: `Cannot upload file: ${error.message}`
+					});
+				})
+				.finally(() => {
+					// Remove the temporary file
+					if (fs.existsSync(tempFile)) {
+						fs.unlinkSync(tempFile);
+					}
+				});
+		});
+
+		writeStream.on('error', (err) => {
+			logger.error('File write error:', err);
+			res.json({
+				success: false,
+				error: 'Error writing file'
+			});
+		});
+	});
+});
 
 /**
  * Delete file on a given path on the target host
@@ -245,7 +305,7 @@ router.delete('/:host', validate_session, (req, res) => {
 		});
 	}
 
-	Host.count({where: {ip: host}}).then(count => {
+	Host.count({ where: { ip: host } }).then(count => {
 		if (count === 0) {
 			return res.json({
 				success: false,
@@ -261,13 +321,13 @@ router.delete('/:host', validate_session, (req, res) => {
 				message: 'File removed successfully'
 			});
 		})
-		.catch(e => {
-			logger.error('Delete file error:', e);
-			return res.json({
-				success: false,
-				error: `Cannot delete file: ${e.error.message}`
+			.catch(e => {
+				logger.error('Delete file error:', e);
+				return res.json({
+					success: false,
+					error: `Cannot delete file: ${e.error.message}`
+				});
 			});
-		});
 	});
 });
 
