@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warlock - Delete Host</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/frontend.css">
+    <link rel="stylesheet" href="/themes.css">
+    <script src="/common.js"></script>
+</head>
+<body>
+
+<%- include('partials/nav.ejs') %>
+
+<div class="main-container" style="grid-template-columns: 1fr; max-width: 800px;">
+    <main class="content-area">
+        <div class="content-header">
+            <div class="content-header-inner">
+                <h2>
+                    <i class="fas fa-server"></i>
+                    Delete Host
+                </h2>
+                <p>Confirm removal of this host from Warlock</p>
+            </div>
+        </div>
+
+        <div class="content-body">
+
+            <% if (typeof(error) !== 'undefined') { %>
+                <div class="error-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Error:</strong> <%= error %>
+                </div>
+            <% } %>
+
+            <div class="host-details">
+                <p><strong>IP:</strong> <%= typeof(ip) !== 'undefined' ? ip : (host ? host.ip : 'Unknown') %></p>
+            </div>
+
+            <div class="warning-message">
+                <p>This action will permanently remove the host record from the database. No remote cleanup will be performed.</p>
+            </div>
+
+            <form action="/host/delete" method="POST">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="ip" value="<%= typeof(ip) !== 'undefined' ? ip : (host ? host.ip : '') %>">
+
+                <button type="submit" class="action-remove">Confirm Delete</button>
+            </form>
+
+        </div>
+    </main>
+</div>
+
+<%- include('partials/theme-selector.ejs') %>
+
+</body>
+</html>
+

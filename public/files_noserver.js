@@ -101,9 +101,11 @@ window.addEventListener('DOMContentLoaded', () => {
 			// Display hosts
 			displayHostsWithApplications(hosts, applications);
 		}).catch(error => {
+			document.getElementById('hostsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
 			console.error('Error fetching applications:', error);
 		});
 	}).catch(error => {
+		document.getElementById('hostsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
 		console.error('Error fetching hosts:', error);
 	});
 });

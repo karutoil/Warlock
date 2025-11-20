@@ -42,6 +42,17 @@ function renderHost(host, hostData) {
 	ip.textContent = host || '';
 	hostnameContainer.appendChild(ip);
 
+	// Actions (Add Delete button)
+	const actions = document.createElement('div');
+	actions.className = 'host-actions';
+	const deleteBtn = document.createElement('button');
+	deleteBtn.className = 'link-control action-remove';
+	deleteBtn.dataset.href = `/host/delete/${encodeURIComponent(host)}`;
+	deleteBtn.title = 'Delete Host';
+	deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+	actions.appendChild(deleteBtn);
+	hostnameContainer.appendChild(actions);
+
 	// CPU
 	const cpu = document.createElement('div');
 	cpu.className = 'metric-item metric-cpu';
@@ -166,8 +177,8 @@ function updateHost(host, hostData) {
 function renderHosts(hosts) {
 	const container = document.getElementById('hostsList');
 
-	if (!hosts || hosts.length === 0) {
-		container.innerHTML = '<div style="grid-column:1/-1;"><p>No hosts found</p></div>';
+	if (Object.keys(hosts).length === 0) {
+		container.innerHTML = '<div style="grid-column:1/-1;"><p class="error-message">No hosts found</p></div>';
 		return;
 	}
 

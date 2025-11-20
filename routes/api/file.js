@@ -57,14 +57,22 @@ router.get('/:host', validate_session, (req, res) => {
 					encoding = null,
 					cmd = null,
 					filesize = parseInt(lines[1]) || 0,
-					filename = lines[2] || '';
+					filename = lines[2] || '',
+					textMimetypes = [
+						'application/json',
+						'application/xml',
+						'application/javascript',
+						'application/x-javascript',
+						'inode/x-empty',
+						'application/x-wine-extension-ini',
+					];
 
 				if (mimetype) {
 					mimetype = mimetype.split(':').pop().trim();
 				}
 
 				if (filesize <= 1024 * 1024 * 10) {
-					if (mimetype.startsWith('text/') || mimetype === 'application/json' || mimetype === 'application/xml') {
+					if (mimetype.startsWith('text/') || textMimetypes.includes(mimetype)) {
 						cmd = `cat "${filePath}"`;
 						encoding = 'raw';
 					} else if (mimetype.startsWith('image/') || mimetype.startsWith('video/')) {
@@ -222,7 +230,7 @@ router.post('/:host', validate_session, (req, res) => {
 				});
 		} else {
 			// No content supplied, that's fine!  We can still create an empty file.
-			let cmd = `touch "${path}" && chown $(stat -c%U "$(dirname "${path}")"):$(stat -c%U "$(dirname "${path}")") "${path}"`;
+			let cmd = `[ -e "${path}" ] && echo -n "" > "${path}" || touch "${path}"; chown $(stat -c%U "$(dirname "${path}")"):$(stat -c%U "$(dirname "${path}")") "${path}"`;
 			cmdRunner(host, cmd).then(() => {
 				logger.debug('File created successfully:', path);
 				res.json({

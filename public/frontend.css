@@ -1,17 +1,6 @@
 /* ==========================
    Theme variables / palette
    ========================== */
-:root {
-	--primary: #0096ff;
-	--primary-strong: #00d4ff;
-	--accent: #87ceeb;
-	--bg-dark-1: #16213e;
-	--bg-dark-2: #1a1a2e;
-	--muted: #94a3b8;
-	--success: #22c55e;
-	--warning: #facc15;
-	--danger: #ef4444;
-}
 
 :root {
 	--body-bg-1: #0f0f23;
@@ -92,11 +81,17 @@
 	--status-starting: #facc15;
 	--status-stopped: #ed8d70;
 	--status-stopping: #f97316;
-	--status-critical: #e13a3a;
+	/*--status-critical: #e13a3a;*/
+	--status-neutral: #87ceeb;
+	--status-neutral-bg-1: #0a3e93;
+	--status-neutral-bg-2: #2563eb;
+	--status-good: #72f6ce;
 	--status-good-bg-1: #034a1d;
 	--status-good-bg-2: #558868;
+	--status-warning: #fadbb6;
 	--status-warning-bg-1: #5c460c;
 	--status-warning-bg-2: #8a7658;
+	--status-critical: #fdbbbb;
 	--status-critical-bg-1: #530a0a;
 	--status-critical-bg-2: #634141;
 	--graph-bg: #292929;
@@ -735,7 +730,7 @@ button.action-cancel:hover {
 	align-items: center;
 	gap: 1rem;
 	margin-bottom: 1rem;
-	grid-template-areas: 'logo name' 'logo desc';
+	grid-template-areas: 'logo name actions' 'logo desc desc';
 }
 
 .application-card .app-icon,
@@ -773,6 +768,11 @@ button.action-cancel:hover {
 .application-card .app-desc,
 .host-card .host-desc {
 	grid-area: desc;
+}
+
+.application-card .app-actions,
+.host-card .host-actions {
+	grid-area: actions;
 }
 
 .application-card .host-actions button {
@@ -1253,11 +1253,47 @@ button.action-cancel:hover {
 /* ==========================
    Utilities / messages / uploads
    ========================== */
+.info-message {
+	color: var(--status-neutral);
+	padding: 0.75rem 1rem;
+	background: var(--status-neutral-bg-1);
+	border: 1px solid var(--status-neutral-bg-2);
+	border-radius: 6px;
+	margin: 1rem;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.success-message {
+	color: var(--status-good);
+	padding: 0.75rem 1rem;
+	background: var(--status-good-bg-1);
+	border: 1px solid var(--status-good-bg-2);
+	border-radius: 6px;
+	margin: 1rem;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
 .error-message {
-	color: #dc2626;
+	color: var(--status-critical);
+	padding: 0.75rem 1rem;
+	background: var(--status-critical-bg-1);
+	border: 1px solid var(--status-critical-bg-2);
+	border-radius: 6px;
+	margin: 1rem;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.warning-message {
+	color: var(--status-warning);
 	padding: 1rem;
-	background: rgba(239, 68, 68, 0.1);
-	border: 1px solid rgba(239, 68, 68, 0.3);
+	background: var(--status-warning-bg-1);
+	border: 1px solid var(--status-warning-bg-2);
 	border-radius: 6px;
 	margin: 1rem;
 	display: flex;
@@ -1353,18 +1389,6 @@ button.action-cancel:hover {
 	background: rgba(0, 150, 255, 0.15);
 	color: var(--primary-strong);
 	text-shadow: 0 0 12px rgba(0, 150, 255, 0.6);
-}
-
-.success-message {
-	color: #059669;
-	padding: 0.75rem 1rem;
-	background: rgba(34, 197, 94, 0.1);
-	border: 1px solid rgba(34, 197, 94, 0.3);
-	border-radius: 6px;
-	margin: 1rem;
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
 }
 
 #logsContainer {

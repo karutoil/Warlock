@@ -261,14 +261,6 @@ function displayApplications(applications) {
 }
 
 
-// Load navigation component
-fetch('/components/nav')
-	.then(response => response.text())
-	.then(html => {
-		document.getElementById('nav-placeholder').innerHTML = html;
-	})
-	.catch(error => console.error('Error loading navigation:', error));
-
 // Load on page load
 window.addEventListener('DOMContentLoaded', () => {
 	fetchHosts().then(hosts => {
@@ -277,17 +269,19 @@ window.addEventListener('DOMContentLoaded', () => {
 			displayApplications(applications);
 
 			loadAllServicesAndStats();
+
+			// Auto-refresh every 5 seconds
+			setInterval(() => {
+				loadAllServicesAndStats();
+			}, 10000);
 		}).catch(error => {
+			document.getElementById('applicationsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
 			console.error('Error fetching applications:', error);
 		});
 	}).catch(error => {
+		document.getElementById('applicationsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
 		console.error('Error fetching hosts:', error);
 	});
-
-	// Auto-refresh every 5 seconds
-	setInterval(() => {
-		loadAllServicesAndStats();
-	}, 10000);
 });
 
 // Dynamic events for various buttons
