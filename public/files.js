@@ -572,6 +572,9 @@ function editFile(fileData) {
 	viewerSearchBar.style.display = 'flex';
 	viewerActions.style.display = 'flex';
 
+	downloadFileBtn.style.display = 'none';
+	restoreBackupFileBtn.style.display = 'none';
+
 	editorTextarea.value = fileData.content;
 	editorTextarea.disabled = false;
 	saveFileBtn.disabled = false;
@@ -713,36 +716,91 @@ async function createFile() {
 async function loadApplicationPaths() {
 	fetchApplications()
 		.then(applications => {
-			const quickPathsContainer = document.querySelector('.quick-paths');
+			fetch(`/api/quickpaths/${host}`, {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			}).then(response => response.json())
+				.then(quickPaths => {
+					const gamesDOM = document.createElement('div'),
+						appsDOM = document.createElement('div'),
+						homesDOM = document.createElement('div'),
+						gamesSep = document.createElement('div'),
+						appsSep = document.createElement('div'),
+						homesSep = document.createElement('div');
 
-			// Add a separator
-			const separator = document.createElement('div');
-			separator.style.cssText = 'border-top: 1px solid rgba(0, 150, 255, 0.2); margin: 1rem 0; padding-top: 1rem;';
-			separator.innerHTML = '<h4><i class="fas fa-cube"></i> Games</h4>';
-			quickPathsContainer.appendChild(separator);
+					let gamesAdded = false,
+						appsAdded = false,
+						homesAdded = false;
 
-			for (const [guid, app] of Object.entries(applications)) {
-				app.hosts.forEach(hostData => {
-					if (hostData.host === host) {
-						// Extract the last folder name from the path
-						const icon = renderAppIcon(guid);
+					gamesSep.style.cssText = 'border-top: 1px solid rgba(0, 150, 255, 0.2); margin: 1rem 0; padding-top: 1rem;';
+					gamesSep.innerHTML = '<h4><i class="fas fa-gamepad"></i> Games</h4>';
+					gamesDOM.appendChild(gamesSep);
+
+					appsSep.style.cssText = 'border-top: 1px solid rgba(0, 150, 255, 0.2); margin: 1rem 0; padding-top: 1rem;';
+					appsSep.innerHTML = '<h4><i class="fas fa-cube"></i> Applications</h4>';
+					appsDOM.appendChild(appsSep);
+
+					homesSep.style.cssText = 'border-top: 1px solid rgba(0, 150, 255, 0.2); margin: 1rem 0; padding-top: 1rem;';
+					homesSep.innerHTML = '<h4><i class="fas fa-users"></i> Homes</h4>';
+					homesDOM.appendChild(homesSep);
+
+					quickPaths.paths.forEach(pathData => {
+						let icon, title, path, target, guid;
+
+						if (pathData.type === 'app') {
+							appsAdded = true;
+							target = appsDOM;
+							if (pathData.app === 'steam') {
+								icon = '<img src="/media/logos/apps/steam.webp" alt="Steam"/>';
+							}
+							else {
+								icon = '<i class="fas fa-cube"></i>';
+							}
+
+							title = pathData.title || pathData.app;
+							path = pathData.path;
+						}
+						else if (pathData.type === 'game') {
+							gamesAdded = true;
+							target = gamesDOM;
+							guid = pathData.guid;
+							icon = renderAppIcon(pathData.guid);
+							title = applications[pathData.guid].title || pathData.guid;
+							path = pathData.path;
+						}
+						else if (pathData.type === 'home') {
+							homesAdded = true;
+							target = homesDOM;
+							icon = pathData.path === '/root' ? '<i class="fas fa-user-ninja"></i>' : '<i class="fas fa-user"></i>';
+							title = pathData.title || 'Home';
+							path = pathData.path;
+						}
 
 						const quickPathItem = document.createElement('div');
 						quickPathItem.className = 'quick-path-item';
-						quickPathItem.dataset.path = hostData.path;
+						quickPathItem.dataset.path = path;
 						quickPathItem.dataset.host = host;
-						quickPathItem.dataset.guid = app.guid;
-						quickPathItem.innerHTML = `
-                            ${icon}
-                            ${app.title}
-                        `;
+						quickPathItem.dataset.guid = guid;
+						quickPathItem.innerHTML = `${icon} ${title}`;
 						quickPathItem.addEventListener('click', () => {
-							loadDirectory(hostData.path);
+							loadDirectory(path);
 						});
-						quickPathsContainer.appendChild(quickPathItem);
+						target.appendChild(quickPathItem);
+					});
+
+					const quickPathsContainer = document.querySelector('.quick-paths');
+					if (gamesAdded) {
+						quickPathsContainer.appendChild(gamesDOM);
+					}
+					if (appsAdded) {
+						quickPathsContainer.appendChild(appsDOM);
+					}
+					if (homesAdded) {
+						quickPathsContainer.appendChild(homesDOM);
 					}
 				});
-			}
 		});
 }
 
@@ -791,14 +849,22 @@ function showRenameModal() {
 
 function performDownload(e) {
 	e.preventDefault();
+
 	let filePath = null;
 	if (e.target.dataset.path) {
 		filePath = e.target.dataset.path;
 	}
-	else {
+	else if(e.target.closest('[data-path]')) {
 		filePath = e.target.closest('[data-path]').dataset.path;
 	}
+	else if(contextMenuData) {
+		filePath = contextMenuData.path;
+	}
+	else {
+		return;
+	}
 
+	hideContextMenu();
 	window.open(`/api/file/${host}?path=${filePath}&download=1`, '_blank');
 }
 
@@ -1047,6 +1113,10 @@ restoreBackupFileBtn.addEventListener('click', () => {
 });
 confirmRestoreBtn.addEventListener('click', performRestoreBackup);
 
+// Download file
+downloadFileBtn.addEventListener('click', performDownload);
+document.getElementById('contextDownload').addEventListener('click', performDownload);
+
 
 // Hide context menu on click outside
 document.addEventListener('click', (e) => {
@@ -1057,11 +1127,6 @@ document.addEventListener('click', (e) => {
 
 // Confirm handlers
 
-
-
-
-
-downloadFileBtn.addEventListener('click', performDownload);
 
 // Search functionality for unified viewer
 let viewerMatches = [];

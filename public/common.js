@@ -695,14 +695,21 @@ function showToast(type, message, duration = 4000) {
  * @param {string} data
  */
 function terminalOutputHelper(terminalOutput, event, data) {
+	let scrolledToBottom = terminalOutput.scrollHeight - terminalOutput.clientHeight <= terminalOutput.scrollTop + 1;
+
 	// Swap any < ... > to prevent HTML issues
 	data = data.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 	// Put pretty colors in place
 	data = parseTerminalCodes(data);
 
+	// Append output
 	terminalOutput.innerHTML += `<div class="line-${event}">${data}</div>`;
-	terminalOutput.scrollTop = terminalOutput.scrollHeight;
+
+	// Scroll to bottom
+	if (scrolledToBottom) {
+		terminalOutput.scrollTop = terminalOutput.scrollHeight;
+	}
 }
 
 

@@ -1288,12 +1288,12 @@ button.action-cancel:hover {
    ========================== */
 .context-menu {
 	position: fixed;
-	background: rgba(26, 26, 46, 0.98);
+	background: var(--content-bg);
 	backdrop-filter: blur(20px);
-	border: 1px solid rgba(0, 150, 255, 0.3);
+	border: 1px solid var(--content-border);
 	border-radius: 8px;
-	padding: 0.5rem;
-	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+	padding: 0;
+	box-shadow: 0 10px 30px var(--content-shadow);
 	z-index: 10000;
 	display: none;
 	min-width: 200px;
@@ -1303,34 +1303,28 @@ button.action-cancel:hover {
 	display: block;
 }
 
-.context-menu-item {
-	padding: 0.75rem 1rem;
-	border-radius: 6px;
-	cursor: pointer;
-	transition: all 0.2s ease;
+.context-menu button {
+	border: none;
+	width: 100%;
+	border-radius: 0;
 	display: flex;
-	align-items: center;
-	gap: 0.75rem;
-	color: #e2e8f0;
-	font-size: 0.9rem;
+	padding: 0.75rem;
 }
-
-.context-menu-item:hover {
-	background: rgba(0, 150, 255, 0.2);
+.context-menu button:first-of-type {
+	border-radius: 8px 8px 0 0;
 }
-
-.context-menu-item.danger {
-	color: var(--danger);
+.context-menu button:last-of-type {
+	border-radius: 0 0 8px 8px;
 }
-
-.context-menu-item.danger:hover {
-	background: rgba(220, 38, 38, 0.2);
+.context-menu button:hover {
+	transform: scale(1.05);
 }
-
-.context-menu-separator {
-	height: 1px;
-	background: rgba(0, 150, 255, 0.2);
-	margin: 0.5rem 0;
+.context-menu button i {
+	flex: 1;
+}
+.context-menu button span {
+	flex: 3;
+	text-align: left;
 }
 
 .three-dot-btn {

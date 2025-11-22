@@ -18,14 +18,15 @@ export async function cmdStreamer(target, cmd, res) {
 			'Connection': 'keep-alive'
 		});
 
+		const req = res.req;
 		const hostLookup = await Host.count({where: {ip: target}});
+		let spawnCommand, spawnArgs, clientGone = false;
+
 		if (hostLookup === 0) {
 			res.write(`event: error\ndata: Target host '${target}' not found in database.\n\n`);
 			res.end();
 			return reject();
 		}
-
-		let spawnCommand, spawnArgs;
 
 		if (target === 'localhost' || target === '127.0.0.1') {
 			// For localhost we need to run the command using a local shell so arbitrary
@@ -33,7 +34,7 @@ export async function cmdStreamer(target, cmd, res) {
 			// runs the command string through a login-ish shell; fall back to `sh -c`
 			// if bash is not available on the system.
 			spawnCommand = 'bash';
-			spawnArgs = ['-lc', cmd];
+			spawnArgs = ['-lc', `'${cmd}'`];
 		} else {
 			// Run the remote command under bash on the remote host so complex shell
 			// constructs (pipes, redirects, &&, etc.) don't require fragile quoting.
@@ -43,7 +44,7 @@ export async function cmdStreamer(target, cmd, res) {
 				'-o', 'LogLevel=quiet',
 				'-o', 'StrictHostKeyChecking=no',
 				`root@${target}`,
-				'bash', '-lc', cmd
+				'bash', '-lc', `'${cmd}'`
 			];
 		}
 
@@ -52,19 +53,42 @@ export async function cmdStreamer(target, cmd, res) {
 		const process = spawn(spawnCommand, spawnArgs);
 
 		// Helper to send data to client as SSE data: lines prefixed with "data: " and double newline
-		function sendData(pipe, chunk) {
+		const sendData = (pipe, chunk) => {
 			const lines = String(chunk).split(/\r?\n/);
 			for (const line of lines) {
 				if (line.length === 0) continue;
 				res.write(`${pipe}: ${line}\n\n`);
 			}
-		}
+		};
+
+		const onClientClose = () => {
+			if (clientGone) return;
+			clientGone = true;
+
+			logger.debug('Client disconnected, killing process');
+			try {
+				if (!process.killed) {
+					process.kill();
+				}
+			} catch (e) {
+				// Ignore
+			}
+		};
+
+		const cleanupListeners = () => {
+			req.removeListener('close', onClientClose);
+			req.removeListener('aborted', onClientClose);
+			res.removeListener('close', onClientClose);
+		};
 
 		process.stdout.on('data', (chunk) => sendData('stdout', chunk));
 		process.stderr.on('data', (chunk) => sendData('stderr', chunk));
 
 		process.on('close', (code, signal) => {
 			logger.debug('close', code, signal);
+			cleanupListeners();
+			if (clientGone) return;
+
 			if (code !== 0) {
 				res.write(`event: error\ndata: Exit code of ${code} indicated an error\n\n`);
 				res.end();
@@ -79,9 +103,17 @@ export async function cmdStreamer(target, cmd, res) {
 
 		process.on('error', (err) => {
 			logger.error('Process error:', err);
+			cleanupListeners();
+			if (clientGone) return;
+
 			res.write(`event: error\ndata: ${err.message}\n\n`);
 			res.end();
 			reject();
 		});
+
+		// Track client disconnects
+		req.on('close', onClientClose);
+		req.on('aborted', onClientClose);
+		res.on('close', onClientClose);
 	});
 }

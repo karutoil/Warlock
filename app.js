@@ -156,6 +156,7 @@ app.use('/api/service/control', require('./routes/api/service_control'));
 app.use('/api/service/configs', require('./routes/api/service_configs'));
 app.use('/api/application', require('./routes/api/application'));
 app.use('/api/application/backup', require('./routes/api/application_backup'));
+app.use('/api/quickpaths', require('./routes/api/quickpaths'));
 
 
 

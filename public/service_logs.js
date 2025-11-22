@@ -3,7 +3,17 @@ let serviceIdentifier = null;
 let lastLogs = [];
 
 async function fetchLogs() {
-	fetch(`/api/service/logs/${loadedApplication}/${loadedHost}/${serviceIdentifier}`, {
+	stream(
+		`/api/service/logs/${loadedApplication}/${loadedHost}/${serviceIdentifier}`,
+		'GET',
+		{},
+		null,
+		(event, data) => {
+			terminalOutputHelper(logsContainer, event, data);
+		}
+	);
+/*
+	fetch(, {
 		method: 'GET',
 	})
 		.then(response => response.text())
@@ -24,7 +34,7 @@ async function fetchLogs() {
 			if (scrolledToBottom) {
 				logsContainer.scrollTop = logsContainer.scrollHeight;
 			}
-		});
+		});*/
 }
 
 async function fetchService() {
@@ -84,14 +94,12 @@ window.addEventListener('DOMContentLoaded', () => {
 				el.innerHTML = service;
 			});
 
-			setInterval(() => {
-				fetchLogs();
-			}, 2000);
+			fetchLogs();
+
 			setInterval(() => {
 				fetchService();
 			}, 20000);
 
-			fetchLogs();
 			fetchService();
 
 		})

@@ -284,15 +284,18 @@
 
     <!-- Context Menu -->
     <div id="contextMenu" class="context-menu">
-        <div class="context-menu-item" id="contextRename">
+        <button class="action-rename context-menu-item" id="contextRename">
             <i class="fas fa-edit"></i>
             <span>Rename</span>
-        </div>
-        <div class="context-menu-separator"></div>
-        <div class="context-menu-item danger" id="contextDelete">
+        </button>
+        <button class="action-download context-menu-item" id="contextDownload">
+            <i class="fas fa-download"></i>
+            <span>Download</span>
+        </button>
+        <button class="action-remove context-menu-item" id="contextDelete">
             <i class="fas fa-trash"></i>
             <span>Delete</span>
-        </div>
+        </button>
     </div>
 
     <!-- Upload Progress Modal -->
