@@ -139,6 +139,7 @@ app.use('/service/logs', require('./routes/service_logs'));
 app.use('/service/configure', require('./routes/service_configure'));
 app.use('/application/uninstall', require('./routes/application_uninstall'));
 app.use('/application/install', require('./routes/application_install'));
+app.use('/application/backups', require('./routes/application_backups'));
 
 
 /***************************************************************
@@ -157,6 +158,7 @@ app.use('/api/service/configs', require('./routes/api/service_configs'));
 app.use('/api/application', require('./routes/api/application'));
 app.use('/api/application/backup', require('./routes/api/application_backup'));
 app.use('/api/quickpaths', require('./routes/api/quickpaths'));
+app.use('/api/cron', require('./routes/api/cron'));
 
 
 

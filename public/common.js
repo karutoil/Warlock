@@ -712,6 +712,17 @@ function terminalOutputHelper(terminalOutput, event, data) {
 	}
 }
 
+/**
+ * Convert a GMT timestamp to a local date string
+ *
+ * @param {int} unixTime
+ * @returns {string}
+ */
+function convertTimestampToDateTimeString(unixTime) {
+	const date = new Date(unixTime * 1000);
+	return date.toLocaleString();
+}
+
 
 document.addEventListener('DOMContentLoaded', () => {
 	// Add standard close events to Modals

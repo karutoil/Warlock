@@ -416,6 +416,7 @@ table td {
 .form-group input[type=password],
 .form-group input[type=date],
 .form-group input[type=datetime],
+.form-group input[type=time],
 .form-group input[type=number],
 .form-group select,
 .form-group textarea {
@@ -705,9 +706,15 @@ button.action-cancel:hover {
 #installAppHostList .host-card.compatible-host {
 	cursor: pointer;
 }
+#backupsList {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
 
 .application-card,
-.host-card {
+.host-card,
+.backup-file-item {
 	border-radius: 12px;
 	padding: 1rem;
 	transition: all 0.3s;
@@ -719,7 +726,8 @@ button.action-cancel:hover {
 }
 
 .application-card:hover,
-.host-card:hover {
+.host-card:hover,
+.backup-file-item:hover {
 	border-color: var(--content-hover-border);
 	transform: translateY(-2px);
 	box-shadow: 0 10px 20px var(--content-shadow);
@@ -964,6 +972,19 @@ button.action-cancel:hover {
 }
 .cpu-speedometer .bg-stop {
 	stop-color: var(--status-critical-bg-1);
+}
+
+.backup-file-item {
+	display: flex;
+}
+.backup-file-item .file-modified {
+	flex: 1;
+}
+.backup-file-item .file-size {
+	flex: 1;
+}
+.backup-file-item .file-actions {
+	flex: 2;
 }
 
 /* ==========================

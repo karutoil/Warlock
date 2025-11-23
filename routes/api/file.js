@@ -46,6 +46,11 @@ router.get('/:host', validate_session, (req, res) => {
 						logger.error('File download error:', err);
 					}
 				});
+			}).catch(e => {
+				return res.json({
+					success: false,
+					error: `Cannot download file: ${e.error.message}`
+				});
 			});
 		}
 		else {
@@ -286,7 +291,6 @@ router.post('/:host', validate_session, (req, res) => {
 	});
 });
 
-// @todo Add a PUT method to push a binary file to the target host.
 router.put('/:host', validate_session, (req, res) => {
 	const host = req.params.host;
 	const filePath = req.query.path;

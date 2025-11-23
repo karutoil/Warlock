@@ -351,17 +351,6 @@ function getPermissions(mode) {
 	return result;
 }
 
-/**
- * Convert a GMT timestamp to a local date string
- *
- * @param {int} unixTime
- * @returns {string}
- */
-function getTimestamp(unixTime) {
-	const date = new Date(unixTime * 1000);
-	return date.toLocaleString();
-}
-
 async function loadDirectory(path) {
 	closeViewer();
 	showLoading();
@@ -422,7 +411,7 @@ function displayFiles(files) {
 				<div class="file-owner">${file.user}:${file.group}</div>
 				<div class="file-permissions">${getPermissions(file.permissions)}</div>
 				<div class="file-size">${file.size === null ? '-' : formatFileSize(file.size)}</div>
-				<div class="file-modified">${getTimestamp(file.modified)}</div>
+				<div class="file-modified">${convertTimestampToDateTimeString(file.modified)}</div>
 				
 				<button class="three-dot-btn" onclick="showThreeDotMenu('${file.path}', '${file.name}', ${file.type === 'directory'}, event)" title="More options">
 					<i class="fas fa-ellipsis-v"></i>
@@ -523,7 +512,7 @@ function previewFile(fileData) {
 			restoreBackupFileBtn.dataset.guid = item.dataset.guid;
 			restoreBackupFileBtn.dataset.filename = fileData.name;
 			restoreBackupFileBtn.dataset.host = item.dataset.host;
-			restoreBackupFileBtn.dataset.modified = getTimestamp(fileData.modified);
+			restoreBackupFileBtn.dataset.modified = convertTimestampToDateTimeString(fileData.modified);
 
 			return false;
 		}
