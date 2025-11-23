@@ -660,7 +660,8 @@ button.action-cancel:hover {
 	border-radius: 0.5rem;
 }
 
-#services-table td.status.status-running {
+#services-table td.status.status-running,
+#rulesContainer td.status-allow {
 	color: var(--status-running);
 }
 
@@ -669,7 +670,9 @@ button.action-cancel:hover {
 	animation: blinker 4s infinite;
 }
 
-#services-table td.status.status-stopped {
+#services-table td.status.status-stopped,
+#rulesContainer td.status-deny,
+#rulesContainer td.status-reject {
 	color: var(--status-stopped);
 }
 
@@ -741,7 +744,8 @@ button.action-cancel:hover {
 	object-fit: cover;
 }
 
-.application-card .app-install {
+.application-card .app-install,
+.host-card .host-title {
 	display: flex;
 	align-content: space-between;
 	align-items: center;
@@ -771,7 +775,8 @@ button.action-cancel:hover {
 	align-items: center;
 	margin: 0 0 0.5rem;
 }
-.application-card .app-install .host-name {
+.application-card .app-install .host-name,
+.host-card .host-name {
 	flex: 3 100%;
 	display: flex;
 	align-items: center;
@@ -785,12 +790,15 @@ button.action-cancel:hover {
 	gap: 0.25rem;
 }
 .application-card .app-install .host-name img,
-.host-card .app-install .app-name img {
+.host-card .app-install .app-name img,
+.host-card .host-name img {
 	width: 1.25em;
 }
-.application-card .app-install .host-actions {
+.application-card .app-install .host-actions,
+.host-card .host-title .host-actions {
 	flex: 3 100%;
-	text-align: right;
+	display: flex;
+	gap: 0.35rem;
 }
 .host-card .filesystem-row-header .filesystem-actions,
 .host-card .app-install .app-actions {
@@ -798,8 +806,7 @@ button.action-cancel:hover {
 	text-align: right;
 }
 
-.application-card .app-title,
-.host-card .host-title {
+.application-card .app-title {
 	display: grid;
 	align-items: center;
 	gap: 1rem;
@@ -834,30 +841,28 @@ button.action-cancel:hover {
 	color: var(--table-header);
 }
 
-.application-card .app-name,
-.host-card .host-name {
+.application-card .app-name {
 	grid-area: name;
 }
 
-.application-card .app-desc,
-.host-card .host-desc {
+.application-card .app-desc {
 	grid-area: desc;
 }
 
-.application-card .app-actions,
-.host-card .host-actions {
+.application-card .app-actions {
 	grid-area: actions;
 }
 
-.application-card .host-actions button {
+.application-card .host-actions button,
+.host-card .host-actions button {
 	padding: 0.25rem 0.5rem;
 	border: none;
 	border-radius: 5px;
-	color: white;
 	cursor: pointer;
 	font-weight: 500;
 	font-size: 0.85rem;
 	transition: all 0.3s;
+	flex: 1;
 }
 
 .host-card .filesystem,

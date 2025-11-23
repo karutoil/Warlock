@@ -25,32 +25,36 @@ function renderHost(host, hostData) {
 
 	// Hostname
 	hostnameContainer.className = 'host-title';
-	if (hostData.os.title) {
-		const os = document.createElement('div');
-		os.className = 'host-icon';
-		os.innerHTML = renderHostIcon(host);
-		hostnameContainer.appendChild(os);
-	}
 	const hostname = document.createElement('h4');
 	hostname.className = 'host-name';
-	hostname.textContent = hostData.hostname || 'Unknown';
+	hostname.innerHTML = `${renderHostIcon(host)} <span>${hostData.hostname || 'Unknown'}</span>`;
 	hostnameContainer.appendChild(hostname);
-
-	// IP
+/*
+	// IP/
 	const ip = document.createElement('div');
 	ip.className = 'host-desc';
 	ip.textContent = host || '';
-	hostnameContainer.appendChild(ip);
+	hostnameContainer.appendChild(ip);*/
 
 	// Actions (Add Delete button)
 	const actions = document.createElement('div');
-	actions.className = 'host-actions';
 	const deleteBtn = document.createElement('button');
+	const firewallBtn = document.createElement('button');
+
+	actions.className = 'host-actions';
+
+	firewallBtn.className = 'link-control action-edit';
+	firewallBtn.dataset.href = `/host/firewall/${encodeURIComponent(host)}`;
+	firewallBtn.title = 'Host Firewall';
+	firewallBtn.innerHTML = '<i class="fas fa-shield"></i>';
+	actions.appendChild(firewallBtn);
+
 	deleteBtn.className = 'link-control action-remove';
 	deleteBtn.dataset.href = `/host/delete/${encodeURIComponent(host)}`;
 	deleteBtn.title = 'Delete Host';
 	deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
 	actions.appendChild(deleteBtn);
+
 	hostnameContainer.appendChild(actions);
 
 	// CPU

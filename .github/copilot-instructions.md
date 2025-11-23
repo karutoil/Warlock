@@ -1,14 +1,24 @@
 # Warlock - Remote Server Management System
 
+In this repo prefer grouped declarations:
+- Group related `const`/`let` at the top of the function/block scope.
+- Use a single `const` declaration with comma-separated identifiers when appropriate.
+- Avoid scattering small `const`/`let` statements across the body.
+  (Used by humans, linters and Copilot prompts.)
+
 ## Architecture Overview
-Warlock is an Express.js web application that provides remote management for game servers via SSH. The system consists of a Node.js backend (`app.js`) serving static HTML files with embedded JavaScript frontends that communicate with a remote Linux server at `root@45.26.230.248`.
+Warlock is an Express.js web application that provides remote management for game servers via SSH. 
+The system consists of a Node.js backend (`app.js`) serving static HTML files with embedded 
+JavaScript frontends that communicate with remote Linux servers.
+
+Since this system is designed for package installing and system management,
+all operations are performed with root privileges via SSH commands.
 
 ## Key Components
 
 ### Backend Structure (`app.js`)
 - **Express Server**: Runs on port 3077 (configurable via `PORT` env var)
 - **SSH Command Execution**: All server operations use SSH to execute commands on remote server
-- **Game Server Management**: Uses `/home/steam/VEIN/manage.py` script on remote server for game operations
 - **Real-time Monitoring**: System stats fetched via custom SSH commands to remote server
 
 ### Frontend Architecture (`public/`)
@@ -18,10 +28,6 @@ Warlock is an Express.js web application that provides remote management for gam
 - **API Communication**: Fetch-based requests to backend endpoints
 
 ## Critical API Endpoints
-
-### System Monitoring
-- `POST /enhanced-monitor`: Real-time system stats (CPU, memory, storage, processes)
-- `POST /start-bpytop` / `GET /bpytop-output` / `POST /stop-bpytop`: Terminal monitoring via bpytop
 
 ### Game Server Management
 - `POST /create-server`: Create new game server instances

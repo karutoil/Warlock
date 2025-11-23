@@ -135,6 +135,7 @@ app.use('/login', require('./routes/login'));
 app.use('/hosts', require('./routes/hosts'));
 app.use('/host/add', require('./routes/host_add'));
 app.use('/host/delete', require('./routes/host_delete'));
+app.use('/host/firewall', require('./routes/host_firewall'));
 app.use('/service/logs', require('./routes/service_logs'));
 app.use('/service/configure', require('./routes/service_configure'));
 app.use('/application/uninstall', require('./routes/application_uninstall'));

@@ -102,13 +102,26 @@ router.get('/:host', validate_session, (req, res) => {
 						return;
 					}
 
-					// to may contain proto like 22/tcp
-					if (to.includes('/')) {
-						let toParts = to.split('/');
-						rule.to = toParts[0];
-						rule.proto = toParts[1];
+					// to and from may contain proto like 22/tcp
+					// This is done the long way because to/from may also contain /NN for CIDR ranges.
+					if (to.includes('/tcp')) {
+						to = to.replace('/tcp', '');
+						rule.proto = 'tcp';
 					}
-					else if (to === 'Anywhere') {
+					else if (to.includes('/udp')) {
+						to = to.replace('/udp', '');
+						rule.proto = 'udp';
+					}
+					if (from.includes('/tcp')) {
+						from = from.replace('/tcp', '');
+						rule.proto = 'tcp';
+					}
+					else if (from.includes('/udp')) {
+						from = from.replace('/udp', '');
+						rule.proto = 'udp';
+					}
+
+					if (to === 'Anywhere') {
 						rule.to = 'any';
 					}
 					else {
@@ -224,7 +237,7 @@ router.post('/enable/:host', validate_session, (req, res) => {
 	});
 });
 
-router.post('/:host/disable', validate_session, (req, res) => {
+router.post('/disable/:host', validate_session, (req, res) => {
 	const host = req.params.host;
 	Host.count({ where: { ip: host } }).then(count => {
 		if (count === 0) {
