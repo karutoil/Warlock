@@ -14,14 +14,14 @@ function parseSyntaxLine(line) {
 		desc = desc.replace(/^-+\s*/, '');
 	}
 	const hasValue = token.includes('=');
-	let name = null;
+	let valType = null;
 	let option = token;
 	if (hasValue) {
 		const parts = token.split(/=(.+)/);
 		option = parts[0];
-		name = parts[1] ? parts[1].replace(/^<|>$/g, '') : null;
+		valType = parts[1] ? parts[1].replace(/^<|>$/g, '') : null;
 	}
-	return { option, hasValue, name, desc };
+	return { option, hasValue, valType, desc };
 }
 
 function createOptionElement(spec) {
@@ -38,11 +38,17 @@ function createOptionElement(spec) {
 
 	if (spec.hasValue) {
 		const input = document.createElement('input');
-		input.type = 'text';
+		if (spec.valType) {
+			if (['number', 'int', 'float'].includes(spec.valType.toLowerCase())) {
+				input.type = 'number';
+			}
+			else {
+				input.type = 'text';
+			}
+		}
 		input.id = safeId;
 		input.name = spec.option;
 		input.className = 'install-option-input';
-		if (spec.name) input.placeholder = spec.name;
 		wrapper.appendChild(input);
 	} else {
 		const input = document.createElement('input');

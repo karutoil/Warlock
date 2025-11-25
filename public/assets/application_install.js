@@ -8,6 +8,10 @@ function renderHost(hostData, isCompatible, compatibleNotice) {
 		metricsContainer = document.createElement('div');
 
 	hostContainer.className = 'host-card';
+	if (hostData.os.name) {
+		hostContainer.appendChild(renderHostOSThumbnail(hostData.ip));
+	}
+
 	if (isCompatible) {
 		hostContainer.classList.add('compatible-host');
 		hostContainer.dataset.host = hostData.ip;
@@ -17,21 +21,18 @@ function renderHost(hostData, isCompatible, compatibleNotice) {
 	// Hostname
 	hostnameContainer.className = 'host-title';
 	if (hostData.os.title) {
-		const os = document.createElement('div');
-		os.className = 'host-icon';
-		os.innerHTML = renderHostIcon(hostData.ip);
-		hostnameContainer.appendChild(os);
+		const icon = renderHostIcon(hostData.ip);
+		hostnameContainer.innerHTML = `<h4 class="host-name">${icon} ${hostData.hostname}</h4>`;
 	}
-	const hostname = document.createElement('h4');
-	hostname.className = 'host-name';
-	hostname.textContent = hostData.hostname || 'Unknown';
-	hostnameContainer.appendChild(hostname);
+	else {
+		hostnameContainer.innerHTML = `<h4 class="host-name">${hostData.hostname}</h4>`;
+	}
 
 	// IP
-	const ip = document.createElement('div');
+	/*const ip = document.createElement('div');
 	ip.className = 'host-desc';
 	ip.textContent = hostData.ip || '';
-	hostnameContainer.appendChild(ip);
+	hostnameContainer.appendChild(ip);*/
 
 	// CPU
 	const cpu = document.createElement('div');
@@ -111,6 +112,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
 				if (appUrl) {
 					html += `<p><strong>Source:</strong> <a href="${appUrl}" target="_blank" rel="noopener">${appUrlLabel}</a></p>`;
+				}
+				if (app.branch) {
+					html += `<p><strong>Branch:</strong> ${app.branch}</p>`;
 				}
 				if (app.author) {
 					if (app.author.includes('@') && app.author.includes('<')) {

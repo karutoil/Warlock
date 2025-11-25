@@ -138,6 +138,10 @@ window.addEventListener('DOMContentLoaded', () => {
 								console.debug(configs);
 								buildOptionsForm(app_guid, host, service, configs);
 							}
+							else {
+								configurationContainer.innerHTML = `<div class="error-message" role="alert">Unable to load service configuration, game may not support this feature.</div>`;
+								console.error(result.error);
+							}
 						});
 				});
 		})

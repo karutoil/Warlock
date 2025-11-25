@@ -356,6 +356,30 @@ function renderHostName(host) {
 }
 
 /**
+ * Get the rendered HTMLImageElement for a host OS thumbnail.
+ *
+ * @param {string} host Host name or IP address
+ * @returns {HTMLImageElement}
+ */
+function renderHostOSThumbnail(host) {
+	let hostInfo = hostData && hostData[host] || null;
+
+	const thumbnail = document.createElement('img');
+	thumbnail.className = 'os-thumbnail';
+	if (hostInfo.os.name && hostInfo.os.version) {
+		thumbnail.src = `/assets/media/wallpapers/servers/${hostInfo.os.name.toLowerCase()}_${hostInfo.os.version.toLowerCase()}.webp`;
+		thumbnail.dataset.fallback = '/assets/media/wallpapers/servers/generic.webp';
+		thumbnail.alt = hostInfo.os.name;
+		thumbnail.onerror = "this.onerror=null;this.src=this.dataset.fallback;";
+	}
+	else {
+		thumbnail.src = '/assets/media/wallpapers/servers/generic.webp';
+	}
+
+	return thumbnail;
+}
+
+/**
  * Get the rendered HTML for a host connection icon.
  *
  * @param {host} host

@@ -11,17 +11,7 @@ function renderHost(host, hostData) {
 	const target = document.getElementById('hostsList');
 	const cpuGraph = document.getElementById('cpu-speedometer-template').content.cloneNode(true);
 
-	const thumbnail = document.createElement('img');
-	thumbnail.className = 'os-thumbnail';
-	if (hostData.os.name && hostData.os.version) {
-		thumbnail.src = `/assets/media/wallpapers/servers/${hostData.os.name.toLowerCase()}_${hostData.os.version.toLowerCase()}.webp`;
-		thumbnail.dataset.fallback = '/assets/media/wallpapers/servers/generic.webp';
-		thumbnail.alt = hostData.os.name;
-		thumbnail.onerror = "this.onerror=null;this.src=this.dataset.fallback;";
-	}
-	else {
-		thumbnail.src = '/assets/media/wallpapers/servers/generic.webp';
-	}
+	const thumbnail = hostContainer.appendChild(renderHostOSThumbnail(host));
 
 	// Hostname
 	hostnameContainer.className = 'host-title';
