@@ -147,9 +147,9 @@ class BaseService:
 			print(help_text)
 		if val_type == 'bool':
 			default = 'y' if val else 'n'
-			val = prompt_yn(option, default)
+			val = prompt_yn('%s: ' % option, default)
 		else:
-			val = prompt_text(option, default=val, prefill=True)
+			val = prompt_text('%s: ' % option, default=val, prefill=True)
 
 		self.set_option(option, val)
 
@@ -198,7 +198,7 @@ class BaseService:
 
 		pid = self.get_game_pid()
 
-		if pid == 0:
+		if pid == 0 or pid is None:
 			return 'N/A'
 
 		mem = subprocess.run([
@@ -224,7 +224,7 @@ class BaseService:
 
 		pid = self.get_game_pid()
 
-		if pid == 0:
+		if pid == 0 or pid is None:
 			return 'N/A'
 
 		cpu = subprocess.run([
@@ -454,7 +454,7 @@ class BaseService:
 			stdout=subprocess.PIPE
 		).stdout.decode()
 
-	def post_start(self):
+	def post_start(self) -> bool:
 		"""
 		Perform the necessary operations for after a game has started
 		:return:
@@ -480,7 +480,8 @@ class BaseService:
 		try:
 			print('Starting game via systemd, please wait a minute...')
 			start_timer = time.time()
-			subprocess.run(['systemctl', 'start', self.service])
+			subprocess.Popen(['systemctl', 'start', self.service])
+			time.sleep(10)
 
 			ready = False
 			counter = 0
@@ -535,12 +536,13 @@ class BaseService:
 
 				if ready:
 					print('Game has started successfully!')
+					time.sleep(5)
 					break
-				time.sleep(.5)
+				time.sleep(1)
 		except KeyboardInterrupt:
 			print('Cancelled startup wait check, (game is probably still started)')
 
-	def pre_stop(self):
+	def pre_stop(self) -> bool:
 		"""
 		Perform operations necessary for safely stopping a server
 
@@ -559,7 +561,8 @@ class BaseService:
 			return
 
 		print('Stopping server, please wait...')
-		subprocess.run(['systemctl', 'stop', self.service])
+		subprocess.Popen(['systemctl', 'stop', self.service])
+		time.sleep(10)
 
 	def restart(self):
 		"""
@@ -567,7 +570,7 @@ class BaseService:
 		:return:
 		"""
 		if not self.is_running():
-			print('Game is not currently running!', file=sys.stderr)
+			print('%s is not currently running!' % self.service, file=sys.stderr)
 			return
 
 		self.stop()

@@ -54,6 +54,17 @@ class BaseConfig:
 		:param help_text:
 		:return:
 		"""
+
+		# Ensure boolean defaults are stored as strings
+		# They get re-converted back to bools on retrieval
+		if val_type == 'bool' and default is True:
+			default = 'True'
+		elif val_type == 'bool' and default is False:
+			default = 'False'
+
+		if default is None:
+			default = ''
+
 		self.options[name] = (section, key, default, val_type, help_text)
 		# Primary dictionary of all options on this config
 
@@ -90,7 +101,7 @@ class BaseConfig:
 			if value == '':
 				# Allow empty values to defer to default
 				return ''
-			elif value:
+			elif value is True or (str(value).lower() in ('1', 'true', 'yes', 'on')):
 				return 'True'
 			else:
 				return 'False'
@@ -152,6 +163,19 @@ class BaseConfig:
 			return ''
 
 		return self.options[name][3]
+
+	def get_help(self, name: str) -> str:
+		"""
+		Get the help text of a configuration option from the config
+
+		:param name:
+		:return:
+		"""
+		if name not in self.options:
+			print('Invalid option: %s, not available in configuration!' % (name, ), file=sys.stderr)
+			return ''
+
+		return self.options[name][4]
 
 	def exists(self) -> bool:
 		"""

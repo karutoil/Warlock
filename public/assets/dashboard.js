@@ -150,8 +150,11 @@ function populateServicesTable(servicesWithStats) {
 				if (service.pre_exec && service.pre_exec.status !== null && service.pre_exec.status !== 0) {
 					error = true;
 				}
-				if (service.start_exec && service.start_exec.status !== null && service.start_exec.status !== 0) {
-					error = true;
+
+				if (service.start_exec && service.start_exec.status !== null) {
+					if (service.start_exec.status !== 0 && service.start_exec.status !== 15) {
+						error = true;
+					}
 				}
 
 				if (error) {

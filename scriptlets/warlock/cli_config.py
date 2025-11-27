@@ -27,6 +27,8 @@ class CLIConfig(BaseConfig):
 			return ''
 
 		default = self.options[name][2]
+		if default is None:
+			default = ''
 		val_type = self.options[name][3]
 		val = self.values.get(name, default)
 
@@ -163,21 +165,28 @@ class CLIConfig(BaseConfig):
 			val_type = self.options[name][3]
 			raw_val = self.values[name]
 
-			if val_type == 'bool' and raw_val.lower() in ('true', '1', 'yes'):
-				# Booleans in command lines are simply present if True or absent if False.
-				if section == 'flag':
-					flags.append('-%s' % key)
+			if val_type == 'bool':
+				if raw_val.lower() in ('true', '1', 'yes'):
+					if section == 'flag':
+						flags.append('-%s=True' % key)
+					else:
+						opts.append('%s=True' % key)
 				else:
-					opts.append(key)
+					if section == 'flag':
+						flags.append('-%s=False' % key)
+					else:
+						opts.append('%s=False' % key)
 			else:
 				if '"' in raw_val:
 					raw_val = "'%s'" % raw_val
-				elif "'" in raw_val or ' ' in raw_val or '?' in raw_val or '=' in raw_val:
+				elif "'" in raw_val or ' ' in raw_val or '?' in raw_val or '=' in raw_val or '-' in raw_val:
 					raw_val = '"%s"' % raw_val
 
-				if section == 'flag':
-					flags.append('-%s=%s' % (key, raw_val))
-				else:
-					opts.append('%s=%s' % (key, raw_val))
+				if raw_val != '':
+					# Only append keys that have values.
+					if section == 'flag':
+						flags.append('-%s=%s' % (key, raw_val))
+					else:
+						opts.append('%s=%s' % (key, raw_val))
 
 		return '%s %s' % ('?'.join(opts), ' '.join(flags))

@@ -1,4 +1,10 @@
+import datetime
+import json
+import os
+import shutil
 import sys
+from urllib import request
+from urllib import error as urllib_error
 from typing import Union
 from scriptlets.bz_eval_tui.prompt_yn import *
 from scriptlets.bz_eval_tui.prompt_text import *
@@ -124,7 +130,7 @@ class BaseApp:
 		"""
 		pass
 
-	def set_option(self, option: str, value: str):
+	def set_option(self, option: str, value: Union[str, int, bool]):
 		"""
 		Set a configuration option in the game config
 		:param option:
@@ -161,22 +167,22 @@ class BaseApp:
 			print(help_text)
 		if val_type == 'bool':
 			default = 'y' if val else 'n'
-			val = prompt_yn(option, default)
+			val = prompt_yn('%s: ' % option, default)
 		else:
-			val = prompt_text(option, default=val, prefill=True)
+			val = prompt_text('%s: ' % option, default=val, prefill=True)
 
 		self.set_option(option, val)
 
-	def get_services(self) -> dict:
+	def get_services(self) -> list:
 		"""
 		Get a dictionary of available services (instances) for this game
 
 		:return:
 		"""
 		if self._svcs is None:
-			self._svcs = {}
+			self._svcs = []
 			for svc in self.services:
-				self._svcs[svc] = GameService(svc, self)
+				self._svcs.append(GameService(svc, self))
 		return self._svcs
 
 	def is_active(self) -> bool:
@@ -184,7 +190,7 @@ class BaseApp:
 		Check if any service instance is currently running or starting
 		:return:
 		"""
-		for svc in self.get_services().values():
+		for svc in self.get_services():
 			if svc.is_running() or svc.is_starting() or svc.is_stopping():
 				return True
 		return False
@@ -196,3 +202,197 @@ class BaseApp:
 		:return:
 		"""
 		return False
+
+	def send_discord_message(self, message: str):
+		"""
+		Send a message to the configured Discord webhook
+
+		:param message:
+		:return:
+		"""
+		if not self.get_option_value('Discord Enabled'):
+			print('Discord notifications are disabled.')
+			return
+
+		if self.get_option_value('Discord Webhook URL') == '':
+			print('Discord webhook URL is not set.')
+			return
+
+		print('Sending to discord: ' + message)
+		req = request.Request(
+			self.get_option_value('Discord Webhook URL'),
+			headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0'},
+			method='POST'
+		)
+		data = json.dumps({'content': message}).encode('utf-8')
+		try:
+			with request.urlopen(req, data=data) as resp:
+				pass
+		except urllib_error.HTTPError as e:
+			print('Could not notify Discord: %s' % e)
+
+	def backup(self, max_backups: int = 0) -> bool:
+		"""
+		Perform a backup of the game configuration and save files
+
+		:param max_backups: Maximum number of backups to keep (0 = unlimited)
+		:return:
+		"""
+		pass
+
+	def prepare_backup(self) -> str:
+		"""
+		Prepare a backup directory for this game and return the file path
+
+		:return:
+		"""
+		here = os.path.dirname(os.path.realpath(__file__))
+		temp_store = os.path.join(here, '.save')
+
+		# Temporary directories for various file sources
+		for d in ['config', 'save']:
+			p = os.path.join(temp_store, d)
+			if not os.path.exists(p):
+				os.makedirs(p)
+
+		# Copy the various configuration files used by the game
+		for cfg in self.configs.values():
+			src = cfg.path
+			if src and os.path.exists(src):
+				print('Backing up configuration file: %s' % src)
+				dst = os.path.join(temp_store, 'config', os.path.basename(src))
+				shutil.copy(src, dst)
+
+		return temp_store
+
+	def complete_backup(self, max_backups: int = 0) -> str:
+		"""
+		Complete the backup process by creating the final archive and cleaning up temporary files
+
+		:return:
+		"""
+		here = os.path.dirname(os.path.realpath(__file__))
+		target_dir = os.path.join(here, 'backups')
+		temp_store = os.path.join(here, '.save')
+		base_name = self.name
+		# Ensure no weird characters in the name
+		replacements = {
+			'/': '_',
+			'\\': '_',
+			':': '',
+			'*': '',
+			'?': '',
+			'"': '',
+			"'": '',
+			' ': '_'
+		}
+		for old, new in replacements.items():
+			base_name = base_name.replace(old, new)
+
+		if os.geteuid() == 0:
+			stat_info = os.stat(here)
+			uid = stat_info.st_uid
+			gid = stat_info.st_gid
+		else:
+			uid = None
+			gid = None
+
+		# Ensure target directory exists; this will store the finalized backups
+		if not os.path.exists(target_dir):
+			os.makedirs(target_dir)
+			if uid is not None:
+				os.chown(target_dir, uid, gid)
+
+		# Create the final archive
+		timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+		backup_name = '%s-backup-%s.tar.gz' % (base_name, timestamp)
+		backup_path = os.path.join(target_dir, backup_name)
+		print('Creating backup archive: %s' % backup_path)
+		shutil.make_archive(backup_path[:-7], 'gztar', temp_store)
+
+		# Ensure consistent ownership
+		if uid is not None:
+			os.chown(backup_path, uid, gid)
+
+		# Cleanup
+		shutil.rmtree(temp_store)
+
+		# Remove old backups if necessary
+		if max_backups > 0:
+			backups = []
+			for f in os.listdir(target_dir):
+				if f.startswith('%s-backup-' % base_name) and f.endswith('.tar.gz'):
+					full_path = os.path.join(target_dir, f)
+					backups.append((full_path, os.path.getmtime(full_path)))
+			backups.sort(key=lambda x: x[1])  # Sort by modification time
+			while len(backups) > max_backups:
+				old_backup = backups.pop(0)
+				os.remove(old_backup[0])
+				print('Removed old backup: %s' % old_backup[0])
+
+		return backup_path
+
+	def restore(self, path: str) -> bool:
+		"""
+		Restore a backup from the given filename
+
+		:param path:
+		:return:
+		"""
+		pass
+
+	def prepare_restore(self, filename) -> Union[str, bool]:
+		"""
+		Prepare to restore a backup by extracting it to a temporary location
+
+		:param filename:
+		:return:
+		"""
+		if not os.path.exists(filename):
+			print('Backup file %s does not exist, cannot continue!' % filename, file=sys.stderr)
+			return False
+
+		if self.is_active():
+			print('Game server is currently running, please stop it before restoring a backup!', file=sys.stderr)
+			return False
+
+		here = os.path.dirname(os.path.realpath(__file__))
+		temp_store = os.path.join(here, '.restore')
+		os.makedirs(temp_store, exist_ok=True)
+
+		if os.geteuid() == 0:
+			stat_info = os.stat(here)
+			uid = stat_info.st_uid
+			gid = stat_info.st_gid
+		else:
+			uid = None
+			gid = None
+
+		# Extract the archive to the temporary location
+		print('Extracting backup archive: %s' % filename)
+		shutil.unpack_archive(filename, temp_store)
+
+		# Copy the various configuration files used by the game
+		for cfg in self.configs.values():
+			dst = cfg.path
+			if dst:
+				src = os.path.join(temp_store, 'config', os.path.basename(dst))
+				if os.path.exists(src):
+					print('Restoring configuration file: %s' % dst)
+					shutil.copy(src, dst)
+					if uid is not None:
+						os.chown(dst, uid, gid)
+
+		return temp_store
+
+	def complete_restore(self):
+		"""
+		Complete the restore process by cleaning up temporary files
+
+		:return:
+		"""
+		here = os.path.dirname(os.path.realpath(__file__))
+		temp_store = os.path.join(here, '.restore')
+
+		# Cleanup
+		shutil.rmtree(temp_store)

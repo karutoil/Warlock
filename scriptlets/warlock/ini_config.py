@@ -43,13 +43,14 @@ class INIConfig(BaseConfig):
 			print('Invalid option: %s, not present in %s configuration!' % (name, os.path.basename(self.path)), file=sys.stderr)
 			return
 
-		# Escape '%' characters that may be present
-		value = value.replace('%', '%%')
-
 		section = self.options[name][0]
 		key = self.options[name][1]
 		val_type = self.options[name][3]
 		str_value = BaseConfig.convert_from_system_type(value, val_type)
+
+		# Escape '%' characters that may be present
+		str_value = str_value.replace('%', '%%')
+
 		if section not in self.parser:
 			self.parser[section] = {}
 		self.parser[section][key] = str_value

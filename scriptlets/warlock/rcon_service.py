@@ -16,7 +16,7 @@ class RCONService(BaseService):
 		:param cmd:
 		:return: None if RCON not available, or the result of the command
 		"""
-		if not self.is_running():
+		if not (self.is_running() or self.is_starting() or self.is_stopping()):
 			# If service is not running, don't even try to connect.
 			return None
 
