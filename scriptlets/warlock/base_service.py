@@ -19,7 +19,18 @@ class BaseService:
 		"""
 		self.service = service
 		self.game = game
+		self.configured = False
 		self.configs = {}
+
+	def load(self):
+		"""
+		Load the configuration files
+		:return:
+		"""
+		for config in self.configs.values():
+			if config.exists():
+				config.load()
+				self.configured = True
 
 	def get_options(self) -> list:
 		"""
@@ -131,6 +142,20 @@ class BaseService:
 
 		print('Invalid option: %s, not present in service configuration!' % option, file=sys.stderr)
 		return False
+
+	def get_name(self) -> str:
+		"""
+		Get the display name of this service
+		:return:
+		"""
+		return self.service
+
+	def get_port(self) -> Union[int, None]:
+		"""
+		Get the primary port of the service, or None if not applicable
+		:return:
+		"""
+		return None
 
 	def prompt_option(self, option: str):
 		"""
