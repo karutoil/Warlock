@@ -17,16 +17,28 @@ class BaseApp:
 
 	def __init__(self):
 		self.name = ''
+		"""
+		:type str:
+		Short name for this game
+		"""
+
 		self.desc = ''
-		self.steam_id = ''
+		"""
+		:type str:
+		Description / full name of this game
+		"""
 
 		self.services = []
 		"""
-		:type list<BaseService>:
+		:type list<str>:
 		List of available services (instances) for this game
 		"""
 
 		self._svcs = None
+		"""
+		:type list<BaseService>:
+		Cached list of service instances for this game
+		"""
 
 		self.configs = {}
 		"""
@@ -297,6 +309,18 @@ class BaseApp:
 				dst = os.path.join(temp_store, 'config', os.path.basename(src))
 				shutil.copy(src, dst)
 
+		# Include service-specific configuration files too
+		for svc in self.get_services():
+			p = os.path.join(temp_store, svc.service)
+			if not os.path.exists(p):
+				os.makedirs(p)
+			for cfg in svc.configs.values():
+				src = cfg.path
+				if src and os.path.exists(src):
+					print('Backing up configuration file: %s' % src)
+					dst = os.path.join(p, os.path.basename(src))
+					shutil.copy(src, dst)
+
 		# Copy save files if specified
 		if save_source and save_files:
 			for f in save_files:
@@ -433,6 +457,20 @@ class BaseApp:
 					shutil.copy(src, dst)
 					if uid is not None:
 						os.chown(dst, uid, gid)
+
+		# Include service-specific configuration files too
+		for svc in self.get_services():
+			p = os.path.join(temp_store, svc.service)
+			if os.path.exists(p):
+				for cfg in svc.configs.values():
+					dst = cfg.path
+					if dst:
+						src = os.path.join(p, os.path.basename(dst))
+						if os.path.exists(src):
+							print('Restoring configuration file: %s' % dst)
+							shutil.copy(src, dst)
+							if uid is not None:
+								os.chown(dst, uid, gid)
 
 		# If the save destination is specified, perform those files/directories too.
 		if save_dest:

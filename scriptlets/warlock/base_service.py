@@ -502,6 +502,21 @@ class BaseService:
 			stdout=subprocess.PIPE
 		).stdout.decode()
 
+	def send_message(self, message: str):
+		"""
+		Send a message to all players via the game API
+		:param message:
+		:return:
+		"""
+		pass
+
+	def save_world(self):
+		"""
+		Force a world save via the game API
+		:return:
+		"""
+		pass
+
 	def post_start(self) -> bool:
 		"""
 		Perform the necessary operations for after a game has started
@@ -597,7 +612,71 @@ class BaseService:
 		Called automatically via systemd
 		:return:
 		"""
-		pass
+		# Send a message to Discord that the instance is stopping
+		msg = self.game.get_option_value('Instance Stopping (Discord)')
+		if msg != '':
+			if '{instance}' in msg:
+				msg = msg.replace('{instance}', self.get_name())
+			self.game.send_discord_message(msg)
+
+		# Send message to players in-game that the server is shutting down,
+		# (only if the API is available)
+		if self.is_api_enabled():
+			timers = (
+				(self.game.get_option_value('Shutdown Warning 5 Minutes'), 60),
+				(self.game.get_option_value('Shutdown Warning 4 Minutes'), 60),
+				(self.game.get_option_value('Shutdown Warning 3 Minutes'), 60),
+				(self.game.get_option_value('Shutdown Warning 2 Minutes'), 60),
+				(self.game.get_option_value('Shutdown Warning 1 Minute'), 30),
+				(self.game.get_option_value('Shutdown Warning 30 Seconds'), 30),
+				(self.game.get_option_value('Shutdown Warning NOW'), 0),
+			)
+			for timer in timers:
+				players = self.get_player_count()
+				if players is not None and players > 0:
+					print('Players are online, sending warning message: %s' % timer[0])
+					self.send_message(timer[0])
+					if timer[1]:
+						time.sleep(timer[1])
+				else:
+					break
+
+		# Force a world save before stopping, if the API is available
+		if self.is_api_enabled():
+			print('Forcing server save')
+			self.save_world()
+			time.sleep(5)
+
+		return True
+
+	def post_start(self) -> bool:
+		"""
+		Perform the necessary operations for after a game has started
+		:return:
+		"""
+		if self.is_api_enabled():
+			counter = 0
+			print('Waiting for API to become available...')
+			while counter < 24:
+				players = self.get_player_count()
+				if players is not None:
+					msg = self.game.get_option_value('Instance Started (Discord)')
+					if msg != '':
+						if '{instance}' in msg:
+							msg = msg.replace('{instance}', self.get_name())
+						self.game.send_discord_message(msg)
+					return True
+				else:
+					print('API not available yet')
+
+				time.sleep(10)
+				counter += 1
+
+			print('API did not reply within the allowed time!', file=sys.stderr)
+			return False
+		else:
+			# API not available, so nothing to check.
+			return True
 
 	def stop(self):
 		"""
