@@ -39,10 +39,11 @@ class BaseConfig:
 								option.get('key'),
 								option.get('default'),
 								option.get('type', 'str'),
-								option.get('help', '')
+								option.get('help', ''),
+								option.get('options', None)
 							)
 
-	def add_option(self, name, section, key, default, val_type, help_text):
+	def add_option(self, name, section, key, default, val_type, help_text, options=None):
 		"""
 		Add a configuration option to the available list
 
@@ -65,7 +66,7 @@ class BaseConfig:
 		if default is None:
 			default = ''
 
-		self.options[name] = (section, key, default, val_type, help_text)
+		self.options[name] = (section, key, default, val_type, help_text, options)
 		# Primary dictionary of all options on this config
 
 		self._keys[key.lower()] = name
@@ -176,6 +177,19 @@ class BaseConfig:
 			return ''
 
 		return self.options[name][4]
+
+	def get_options(self, name: str):
+		"""
+		Get the list of valid options for a configuration option from the config
+
+		:param name:
+		:return:
+		"""
+		if name not in self.options:
+			print('Invalid option: %s, not available in configuration!' % (name, ), file=sys.stderr)
+			return None
+
+		return self.options[name][5]
 
 	def exists(self) -> bool:
 		"""

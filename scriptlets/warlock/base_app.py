@@ -152,6 +152,19 @@ class BaseApp:
 
 		print('Invalid option: %s, not present in game configuration!' % option, file=sys.stderr)
 
+	def get_option_options(self, option: str):
+		"""
+		Get the list of possible options for a configuration option
+		:param options:
+		:return:
+		"""
+		for config in self.configs.values():
+			if option in config.options:
+				return config.get_options(option)
+
+		print('Invalid option: %s, not present in service configuration!' % option, file=sys.stderr)
+		return []
+
 	def prompt_option(self, option: str):
 		"""
 		Prompt the user to set a configuration option for the game
@@ -231,6 +244,22 @@ class BaseApp:
 		except urllib_error.HTTPError as e:
 			print('Could not notify Discord: %s' % e)
 
+	def get_save_directory(self) -> Union[str, None]:
+		"""
+		Get the save directory for this game, or None if not applicable
+
+		:return:
+		"""
+		return None
+
+	def get_save_files(self) -> Union[list, None]:
+		"""
+		Get the list of save files/directories for this game, or None if not applicable
+
+		:return:
+		"""
+		return None
+
 	def backup(self, max_backups: int = 0) -> bool:
 		"""
 		Perform a backup of the game configuration and save files
@@ -238,7 +267,10 @@ class BaseApp:
 		:param max_backups: Maximum number of backups to keep (0 = unlimited)
 		:return:
 		"""
-		pass
+		self.prepare_backup()
+		backup_path = self.complete_backup(max_backups)
+		print('Backup saved to %s' % backup_path)
+		return True
 
 	def prepare_backup(self) -> str:
 		"""
@@ -248,6 +280,8 @@ class BaseApp:
 		"""
 		here = os.path.dirname(os.path.realpath(__file__))
 		temp_store = os.path.join(here, '.save')
+		save_source = self.get_save_directory()
+		save_files = self.get_save_files()
 
 		# Temporary directories for various file sources
 		for d in ['config', 'save']:
@@ -262,6 +296,18 @@ class BaseApp:
 				print('Backing up configuration file: %s' % src)
 				dst = os.path.join(temp_store, 'config', os.path.basename(src))
 				shutil.copy(src, dst)
+
+		# Copy save files if specified
+		if save_source and save_files:
+			for f in save_files:
+				src = os.path.join(save_source, f)
+				dst = os.path.join(temp_store, 'save', f)
+				if os.path.exists(src):
+					print('Backing up save file: %s' % src)
+					if os.path.isfile(src):
+						shutil.copy(src, dst)
+					else:
+						shutil.copytree(src, dst)
 
 		return temp_store
 
@@ -339,7 +385,11 @@ class BaseApp:
 		:param path:
 		:return:
 		"""
-		pass
+		temp_store = self.prepare_restore(path)
+		if temp_store is False:
+			return False
+		self.complete_restore()
+		return True
 
 	def prepare_restore(self, filename) -> Union[str, bool]:
 		"""
@@ -359,6 +409,7 @@ class BaseApp:
 		here = os.path.dirname(os.path.realpath(__file__))
 		temp_store = os.path.join(here, '.restore')
 		os.makedirs(temp_store, exist_ok=True)
+		save_dest = self.get_save_directory()
 
 		if os.geteuid() == 0:
 			stat_info = os.stat(here)
@@ -382,6 +433,28 @@ class BaseApp:
 					shutil.copy(src, dst)
 					if uid is not None:
 						os.chown(dst, uid, gid)
+
+		# If the save destination is specified, perform those files/directories too.
+		if save_dest:
+			save_src = os.path.join(temp_store, 'save')
+			if os.path.exists(save_src):
+				for item in os.listdir(save_src):
+					src = os.path.join(save_src, item)
+					dst = os.path.join(save_dest, item)
+					print('Restoring save file: %s' % dst)
+					if os.path.isfile(src):
+						shutil.copy(src, dst)
+					else:
+						shutil.copytree(src, dst, dirs_exist_ok=True)
+					if uid is not None:
+						if os.path.isfile(dst):
+							os.chown(dst, uid, gid)
+						else:
+							for root, dirs, files in os.walk(dst):
+								for momo in dirs:
+									os.chown(os.path.join(root, momo), uid, gid)
+								for momo in files:
+									os.chown(os.path.join(root, momo), uid, gid)
 
 		return temp_store
 

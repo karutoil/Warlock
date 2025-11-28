@@ -6,10 +6,7 @@ from scriptlets.warlock.base_service import *
 
 
 class RCONService(BaseService):
-	#def __init__(self, service: str, game: BaseGameApp):
-	#	super().__init__(service, game)
-
-	def _rcon_cmd(self, cmd) -> Union[None,str]:
+	def _api_cmd(self, cmd) -> Union[None,str]:
 		"""
 		Execute a raw command with RCON and return the result
 
@@ -24,10 +21,22 @@ class RCONService(BaseService):
 			# RCON is not available due to settings
 			return None
 
+		# Safety checks to ensure we have the necessary info, (regardless of is_api_enabled)
+		port = self.get_api_port()
+		if port is None:
+			print("RCON port is not set!  Please populate get_api_port definition.", file=sys.stderr)
+			return None
+
+		password = self.get_api_password()
+		if password is None:
+			print("RCON password is not set!  Please populate get_api_password definition.", file=sys.stderr)
+			return None
+
 		try:
-			with Client('127.0.0.1', self.get_api_port(), passwd=self.get_api_password(), timeout=2) as client:
+			with Client('127.0.0.1', port, passwd=password, timeout=2) as client:
 				return client.run(cmd).strip()
-		except:
+		except Exception as e:
+			print(str(e), file=sys.stderr)
 			return None
 
 	def is_api_enabled(self) -> bool:

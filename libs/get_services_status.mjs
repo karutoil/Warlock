@@ -24,7 +24,13 @@ export async function getServicesStatus(appData, hostData) {
 
 		cmdRunner(hostData.host, `${hostData.path}/manage.py --get-services`)
 			.then(result => {
-				const appServices = JSON.parse(result.stdout);
+				let appServices;
+				try{
+					appServices = JSON.parse(result.stdout);
+				}
+				catch(e){
+					return reject(new Error(`Error parsing services data for application '${guid}' on host '${hostData.host}': ${e.message}`));
+				}
 
 				// Save this to cache for faster future lookups
 				cache.set(`services_${guid}_${hostData.host}`, appServices, 10); // Cache for 10 seconds

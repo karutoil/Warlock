@@ -143,6 +143,29 @@ class BaseService:
 		print('Invalid option: %s, not present in service configuration!' % option, file=sys.stderr)
 		return False
 
+	def get_option_options(self, option: str):
+		"""
+		Get the list of possible options for a configuration option
+		:param options:
+		:return:
+		"""
+		for config in self.configs.values():
+			if option in config.options:
+				return config.get_options(option)
+
+		print('Invalid option: %s, not present in service configuration!' % option, file=sys.stderr)
+		return []
+
+	def option_ensure_set(self, option: str):
+		"""
+		Ensure that a configuration option has a value set, using the default if not
+		:param option:
+		:return:
+		"""
+		if not self.option_has_value(option):
+			default = self.get_option_default(option)
+			self.set_option(option, default)
+
 	def get_name(self) -> str:
 		"""
 		Get the display name of this service

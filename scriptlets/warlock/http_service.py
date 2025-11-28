@@ -9,7 +9,7 @@ class HTTPService(BaseService):
 	def __init__(self, service: str, game: BaseApp):
 		super().__init__(service, game)
 
-	def _http_cmd(self, cmd: str, method: str = 'GET', data: dict = None):
+	def _api_cmd(self, cmd: str, method: str = 'GET', data: dict = None):
 		method = method.upper()
 
 		if not (self.is_running() or self.is_stopping):
