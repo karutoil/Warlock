@@ -1,5 +1,6 @@
 import sys
 import os
+import tempfile
 from typing import Union
 from scriptlets.warlock.base_config import *
 
@@ -27,7 +28,7 @@ class UnrealConfig(BaseConfig):
 		section = self.options[name][0]
 		key = self.options[name][1]
 		default = self.options[name][2]
-		type = self.options[name][3]
+		val_type = self.options[name][3]
 		if section not in self._values:
 			val = default
 		else:
@@ -47,7 +48,7 @@ class UnrealConfig(BaseConfig):
 			else:
 				val = self._values[section][key]
 
-		return BaseConfig.convert_to_system_type(val, type)
+		return BaseConfig.convert_to_system_type(val, val_type)
 
 	def _find_or_create_value(self, section: list, key: str, str_value: Union[str, list]) -> list:
 		"""
@@ -194,7 +195,7 @@ class UnrealConfig(BaseConfig):
 		:return:
 		"""
 		if os.path.exists(self.path):
-			with open(self.path, 'r') as f:
+			with open(self.path, 'r', encoding='utf-8') as f:
 				section = []
 				last_section = ''
 				for line in f.readlines():
@@ -427,7 +428,63 @@ class UnrealConfig(BaseConfig):
 					break
 				check_path = os.path.dirname(check_path)
 
-		with open(self.path, 'w') as f:
-			f.write(self.fetch())
-		if chown:
-			os.chown(self.path, uid, gid)
+		# Prepare atomic write to a temporary file in the same directory
+		dirname = os.path.dirname(self.path) or '.'
+		temp_file = None
+		try:
+			# Determine mode to use for the new file. If target exists use its mode, otherwise default to 0o644
+			if os.path.exists(self.path):
+				target_mode = os.stat(self.path).st_mode & 0o777
+			else:
+				# Try to inherit from parent dir if possible
+				try:
+					parent_mode = os.stat(dirname).st_mode & 0o777
+					# Use a sensible default based on parent directory while respecting the process umask.
+					prev_umask = os.umask(0)
+					try:
+						target_mode = parent_mode & (~prev_umask)
+					finally:
+						# Restore the previous umask immediately
+						os.umask(prev_umask)
+				except Exception:
+					target_mode = 0o644
+
+			# Create a NamedTemporaryFile in same directory; do not delete automatically
+			tf = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=dirname, delete=False)
+			temp_file = tf.name
+			try:
+				# Write contents and flush to disk
+				tf.write(self.fetch())
+				tf.flush()
+				os.fsync(tf.fileno())
+			finally:
+				tf.close()
+
+			# Set permissions on the temp file to match target_mode
+			try:
+				os.chmod(temp_file, target_mode)
+			except Exception:
+				# chmod failure is non-fatal, proceed
+				pass
+
+			# Atomically replace target with temp file
+			os.replace(temp_file, self.path)
+			temp_file = None
+
+			# Restore ownership if required
+			if chown and uid is not None and gid is not None:
+				try:
+					os.chown(self.path, uid, gid)
+				except PermissionError:
+					# If we can't chown, proceed silently
+					pass
+			# Mark as clean
+			self._is_changed = False
+		except Exception:
+			# Cleanup temporary file on error
+			if temp_file and os.path.exists(temp_file):
+				try:
+					os.unlink(temp_file)
+				except Exception:
+					pass
+			raise
