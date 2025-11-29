@@ -48,20 +48,21 @@ class HTTPService(BaseService):
 			if method == 'POST' and data is not None:
 				data = bytearray(json.dumps(data), 'utf-8')
 				req.add_header('Content-Length', str(len(data)))
-				with request.urlopen(req, data) as resp:
+				with request.urlopen(req, data, timeout=2) as resp:
 					ret = resp.read().decode('utf-8')
 					if ret == '':
 						return None
 					else:
 						return json.loads(ret)
 			else:
-				with request.urlopen(req) as resp:
+				with request.urlopen(req, timeout=2) as resp:
 					ret = resp.read().decode('utf-8')
 					if ret == '':
 						return None
 					else:
 						return json.loads(ret)
-		except:
+		except Exception as e:
+			print(str(e), file=sys.stderr)
 			return None
 
 	def is_api_enabled(self) -> bool:
