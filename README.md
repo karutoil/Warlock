@@ -24,6 +24,14 @@ Warlock/
 
 ## Getting Started
 
+sudo ./install-warlock.sh
+# or run under a service user:
+sudo ./install-warlock.sh --user warlock
+
+sudo ./uninstall-warlock.sh
+
+
+
 1. **Install dependencies:**
    ```bash
    npm install

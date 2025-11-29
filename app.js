@@ -238,6 +238,6 @@ app.post('/search-files', (req, res) => {
 });*/
 
 // Start the server
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
     logger.info(`Listening on ${PORT}`);
 });
