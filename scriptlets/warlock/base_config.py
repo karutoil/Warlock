@@ -43,7 +43,7 @@ class BaseConfig:
 								option.get('options', None)
 							)
 
-	def add_option(self, name, section, key, default, val_type, help_text, options=None):
+	def add_option(self, name, section, key, default='', val_type='str', help_text='', options=None):
 		"""
 		Add a configuration option to the available list
 
@@ -91,7 +91,7 @@ class BaseConfig:
 			return value
 
 	@classmethod
-	def convert_from_system_type(cls, value: Union[str, int, bool], val_type: str) -> str:
+	def convert_from_system_type(cls, value: Union[str, int, bool, list], val_type: str) -> Union[str, list]:
 		"""
 		Convert a system type value to a string for storage
 		:param value:
@@ -106,6 +106,12 @@ class BaseConfig:
 				return 'True'
 			else:
 				return 'False'
+		elif val_type == 'list':
+			if isinstance(value, list):
+				return value
+			else:
+				# Assume comma-separated string
+				return [item.strip() for item in str(value).split(',')]
 		else:
 			return str(value)
 
