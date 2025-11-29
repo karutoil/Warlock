@@ -2,8 +2,6 @@
 # uninstall-warlock.sh
 # Stop, disable and remove the warlock systemd service
 
-set -euo pipefail
-
 SERVICE_UNIT_PATH="/etc/systemd/system/warlock.service"
 
 print_help() {

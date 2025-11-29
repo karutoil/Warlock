@@ -3,14 +3,14 @@
 # Install Warlock as a systemd service in-place (service runs from the directory where this script lives)
 # Usage: install-warlock.sh [--user <name>] [--help]
 
-set -euo pipefail
-
 SCRIPT_NAME=$(basename "$0")
 INSTALL_DIR="$(dirname "$(readlink -f "$0")")"
 NODE_BIN=""
 SERVICE_UNIT_PATH="/etc/systemd/system/warlock.service"
 ENV_FILE="$INSTALL_DIR/.env"
 SERVICE_USER=root
+CONFIGURE_NGINX=1
+FQDN=""
 
 print_help() {
   cat <<EOF
@@ -18,6 +18,7 @@ Usage: $SCRIPT_NAME [options]
 
 Options:
   --user <name>        Run the service as <name> (default: root)
+  --skip-nginx	       Do not configure nginx even if it is installed
   --help               Show this help message
 
 This installer will:
@@ -39,6 +40,10 @@ while [[ $# -gt 0 ]]; do
 				exit 1
 			fi
 			SERVICE_USER="$1"
+			shift
+			;;
+		--skip-nginx)
+			CONFIGURE_NGINX=0
 			shift
 			;;
 		--help)
@@ -67,6 +72,7 @@ fi
 
 if ! which -s nginx; then
 	echo "Warning: Nginx not found in PATH. You may need to set up a reverse proxy manually." >&2
+	CONFIGURE_NGINX=0
 fi
 
 VERSION="$(node --version | sed 's:v::' | cut -d '.' -f 1)"
@@ -79,6 +85,40 @@ if [[ "$VERSION" -lt 20 ]]; then
 	exit 1
 fi
 
+echo "This script will configure Warlock as a system service and configure it for nginx."
+echo ""
+echo "We will:"
+echo "  create /etc/systemd/system/warlock.service"
+echo "  create $ENV_FILE with defaults"
+if [ $CONFIGURE_NGINX -eq 0 ]; then
+	echo "  skip nginx configuration even if nginx is installed"
+else
+	echo "  create /etc/nginx/sites-available/warlock and enable it (if nginx is installed)"
+fi
+echo ""
+echo "Press ENTER to continue or CTRL+C to abort."
+read -r
+
+if [ $CONFIGURE_NGINX -eq 1 ]; then
+	FQDN=""
+	if [ -e "/etc/nginx/sites-available/warlock" ]; then
+		FQDN=$(grep -m1 'server_name' /etc/nginx/sites-available/warlock | awk '{print $2}' | tr -d ';')
+	fi
+
+	if [ -n "$FQDN" ]; then
+		echo "Using existing FQDN from nginx config: $FQDN"
+	else
+		echo "What is the fully qualified domain name (FQDN) for this server? (used in nginx config and SSL registration)"
+		read -r FQDN
+	fi
+
+	if [ -z "$FQDN" ]; then
+		# _ is a wildcard for nginx server_name
+    	FQDN="_"
+    fi
+fi
+
+
 # Install dependencies for this application.
 PWD="$(pwd)"
 if [ "$PWD" != "$INSTALL_DIR" ]; then
@@ -86,10 +126,11 @@ if [ "$PWD" != "$INSTALL_DIR" ]; then
 fi
 npm install
 if [ "$PWD" != "$INSTALL_DIR" ]; then
-	cd -
+	cd "$PWD"
 fi
 
 # Generate unit file
+echo "Generating and saving unit file"
 TMP_UNIT=$(mktemp)
 cat > "$TMP_UNIT" <<UNIT
 [Unit]
@@ -124,7 +165,7 @@ NODE_ENV=production
 SESSION_SECRET=$SECRET
 SKIP_AUTHENTICATION=false
 ENV
-	if [[ "$SERVICE_USER" != "root" ]]; then
+	if [ "$SERVICE_USER" != "root" ]; then
 		chown "$SERVICE_USER":"$SERVICE_USER" "$ENV_FILE"
 	fi
 fi
@@ -140,21 +181,26 @@ if ! systemctl enable --now warlock.service; then
 fi
 
 # If nginx is installed, generate a simple site config that reverse-proxies to the local app
-if command -v nginx >/dev/null 2>&1; then
-  echo "Nginx detected: generating nginx site config..."
-  NGINX_AVAILABLE="/etc/nginx/sites-available/warlock"
-  NGINX_ENABLED="/etc/nginx/sites-enabled/warlock"
-  # Backup existing config if present
-  if [[ -f "$NGINX_AVAILABLE" ]]; then
-    TS=$(date +%s)
-    cp -a "$NGINX_AVAILABLE" "${NGINX_AVAILABLE}.bak.$TS" || true
-  fi
+if [ $CONFIGURE_NGINX -eq 1 ]; then
+	echo "Generating nginx site config..."
+	NGINX_AVAILABLE="/etc/nginx/sites-available/warlock"
+	NGINX_ENABLED="/etc/nginx/sites-enabled/warlock"
+	# Backup existing config if present
+	if [[ -f "$NGINX_AVAILABLE" ]]; then
+		TS=$(date +%s)
+		cp -a "$NGINX_AVAILABLE" "${NGINX_AVAILABLE}.bak.$TS"
+	fi
 
-  TMP_NGINX=$(mktemp)
-  cat > "$TMP_NGINX" <<NGINX
+	TMP_NGINX=$(mktemp)
+	cat > "$TMP_NGINX" <<NGINX
 server {
     listen 80;
-    server_name _;
+    server_name $FQDN;
+
+    client_max_body_size 100M;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    proxy_pass_request_body on;
 
     # Serve static assets directly from the install directory
     location /assets/ {
@@ -174,19 +220,26 @@ server {
     }
 }
 NGINX
-  chmod 0644 "$TMP_NGINX"
-  mv "$TMP_NGINX" "$NGINX_AVAILABLE"
-  ln -sf "$NGINX_AVAILABLE" "$NGINX_ENABLED"
+	chmod 0644 "$TMP_NGINX"
+	mv "$TMP_NGINX" "$NGINX_AVAILABLE"
+	ln -sf "$NGINX_AVAILABLE" "$NGINX_ENABLED"
 
-  # Test nginx config and reload if valid
-  if nginx -t >/dev/null 2>&1; then
-    echo "Nginx configuration OK — reloading nginx"
-    systemctl reload nginx || echo "Warning: failed to reload nginx" >&2
-  else
-    echo "Warning: generated nginx configuration failed nginx -t. Leaving the file in $NGINX_AVAILABLE for inspection." >&2
-  fi
+	# Test nginx config and reload if valid
+	if nginx -t >/dev/null 2>&1; then
+		echo "Nginx configuration OK — reloading nginx"
+		systemctl reload nginx || echo "Warning: failed to reload nginx" >&2
+
+		if which -s certbot; then
+			echo "Attempting to obtain/renew SSL certificate via certbot for $FQDN"
+			certbot --nginx -d "$FQDN" --non-interactive --agree-tos --redirect || echo "Warning: certbot failed to obtain/renew certificate" >&2
+		else
+			echo "Note: certbot not found; skipping SSL certificate setup."
+		fi
+	else
+		echo "Warning: generated nginx configuration failed nginx -t. Leaving the file in $NGINX_AVAILABLE for inspection." >&2
+	fi
 else
-  echo "Note: nginx not found; skipping nginx site generation."
+	echo "Note: nginx not found; skipping nginx site generation."
 fi
 
 # Output quick verification
