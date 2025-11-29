@@ -37,6 +37,14 @@
 
             <% if (typeof(error) !== 'undefined') { %>
                 <% if (typeof(localKey) !== 'undefined') { %>
+                    <% if (typeof(showError) !== 'undefined' && showError) { %>
+                        <!-- Show errors on retries, for debugging things like firewall issues -->
+                        <div class="error-message">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Error:</strong> <%= error %>
+                        </div>
+                    <% } %>
+
                     <!-- An error occurred but we have a local key to show -->
                     <pre class="terminal"><code># Please connect to the host as ROOT and run the following command:
 # If you need to, switch to root with 'sudo su -' first.
@@ -56,6 +64,9 @@
 
             <form action="/host/add" method="POST">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <% if (typeof(localKey) !== 'undefined') { %>
+                    <input type="hidden" name="retry" value="1">
+                <% } %>
 
                 <div class="form-group">
                     <label for="host-ip">Hostname or IP Address</label>

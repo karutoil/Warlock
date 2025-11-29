@@ -1,5 +1,5 @@
 const express = require('express');
-const {User} = require("../db");
+const {User, Host} = require("../db");
 const router = express.Router();
 const csrf = require('csurf');
 const bodyParser = require('body-parser');
@@ -44,7 +44,17 @@ router.post('/', parseForm, csrfProtection, (req, res) => {
 		.then(user => {
 			// Set session user
 			req.session.user = user.id;
-			res.redirect('/');
+
+			if (process.getuid() === 0) {
+				// If the service is running as root, we can add localhost to the list of management servers.
+				Host.create({ ip: '127.0.0.1' }).then(() => {
+					res.redirect('/');
+				});
+			}
+			else {
+				// Redirect to the host add page
+				res.redirect('/host/add');
+			}
 		})
 		.catch(err => {
 			console.error('Error creating user:', err);

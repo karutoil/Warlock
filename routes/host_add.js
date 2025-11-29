@@ -16,7 +16,7 @@ router.get('/', validate_session, csrfProtection, (req, res) => {
 });
 
 router.post('/', parseForm, csrfProtection, (req, res) => {
-	const {ip} = req.body;
+	const {ip, retry} = req.body;
 
 	res.locals.csrfToken = req.csrfToken();
 
@@ -66,6 +66,7 @@ router.post('/', parseForm, csrfProtection, (req, res) => {
 						'host_add',
 						{
 							error: 'Failed to connect via SSH. Please ensure the host is reachable and the SSH key is authorized.',
+							showError: (retry === '1'),
 							localKey,
 							ip
 						}
