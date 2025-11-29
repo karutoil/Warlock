@@ -49,7 +49,78 @@ class UnrealConfig(BaseConfig):
 
 		return BaseConfig.convert_to_system_type(val, type)
 
-	def set_value(self, name: str, value: Union[str, int, bool, list]):
+	def _find_or_create_value(self, section: list, key: str, str_value: Union[str, list]) -> list:
+		"""
+		Find or create a keyvalue in a given section
+		and return the full section data.
+
+		:param section:
+		:param key:
+		:param str_value:
+		:return:
+		"""
+		found = False
+		new_data = []
+		for item in section:
+			if item['type'] == 'keyvalue' and item['key'] == key:
+				if found:
+					# This key has already been handled, so skip any more of them.
+					continue
+				if isinstance(str_value, list):
+					# Multiple values, need to handle duplicates
+					c = 0
+					for val in str_value:
+						if c > 0 and self._use_array_operators:
+							new_data.append({'type': 'keyvalue', 'key': key, 'value': val, 'op': '+'})
+						else:
+							new_data.append({'type': 'keyvalue', 'key': key, 'value': val})
+						c += 1
+				else:
+					# Simple value
+					new_data.append({'type': 'keyvalue', 'key': key, 'value': str_value})
+				found = True
+			else:
+				new_data.append(item)
+		if not found:
+			new_data.append({'type': 'keyvalue', 'key': key, 'value': str_value})
+
+		return new_data
+
+	def _find_or_create_struct_value(self, section: list, key: str, str_value: Union[str, list]) -> list:
+		"""
+		Find or create an idividual struct keyvalue in a given section
+		and return the full section data.
+
+		:param section:
+		:param key:
+		:param str_value:
+		:return:
+		"""
+		found = False
+		group = key.split('/')[0]
+		key = key.split('/')[1]
+		new_data = []
+
+		for item in section:
+			if item['type'] == 'keystruct' and item['key'] == group:
+				if found:
+					# This key has already been handled, so skip any more of them.
+					continue
+				else:
+					# Update the struct value
+					struct_data = item['value']
+					struct_data[key] = str_value
+					new_data.append({'type': 'keystruct', 'key': group, 'value': struct_data})
+					found = True
+			else:
+				new_data.append(item)
+		if not found:
+			struct_data = {key: str_value}
+			new_data.append({'type': 'keystruct', 'key': group, 'value': struct_data})
+
+		return new_data
+
+	def set_value(self, name: str, value: Union[str, int, bool, list, float]):
 		"""
 		Set a configuration option in the config
 
@@ -76,32 +147,12 @@ class UnrealConfig(BaseConfig):
 		new_data = []
 		for sec in self._data:
 			if sec[0]['type'] == 'section' and sec[0]['value'] == section:
-				# Found it, add the keyvalue or update existing
-				found = False
-				new_section = []
-				for item in sec:
-					if item['type'] == 'keyvalue' and item['key'] == key:
-						if found:
-							# This key has already been handled, so skip any more of them.
-							continue
-						if isinstance(str_value, list):
-							# Multiple values, need to handle duplicates
-							c = 0
-							for val in str_value:
-								if c > 0 and self._use_array_operators:
-									new_section.append({'type': 'keyvalue', 'key': key, 'value': val, 'op': '+'})
-								else:
-									new_section.append({'type': 'keyvalue', 'key': key, 'value': val})
-								c += 1
-						else:
-							# Simple value
-							new_section.append({'type': 'keyvalue', 'key': key, 'value': str_value})
-						found = True
-					else:
-						new_section.append(item)
-				if not found:
-					new_section.append({'type': 'keyvalue', 'key': key, 'value': str_value})
-				new_data.append(new_section)
+				if '/' in key:
+					# Struct key
+					new_data.append(self._find_or_create_struct_value(sec, key, str_value))
+				else:
+					# Found it, add the keyvalue or update existing
+					new_data.append(self._find_or_create_value(sec, key, str_value))
 			else:
 				# Not matched, but keep the data
 				new_data.append(sec)
@@ -318,7 +369,7 @@ class UnrealConfig(BaseConfig):
 				value = struct_data[key]
 				if isinstance(value, list):
 					val_str = '(' + ','.join(value) + ')'
-				elif value == '' or ':' in value or ',' in value or '_' in value:
+				elif value == '' or ':' in value or ',' in value or '_' in value or ' ' in value:
 					# Needs quoting
 					val_str = '"%s"' % value.replace('"', '\\"')
 				else:

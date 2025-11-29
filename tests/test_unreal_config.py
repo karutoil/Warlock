@@ -175,6 +175,28 @@ PlayedMaps=NewMap2_WP
             expected = f.read()
         self.assertEqual(expected, cfg.fetch())
 
+    def test_palworld_empty(self):
+        """
+        Test that the Palworld format works even when the ini is empty.
+
+        :return:
+        """
+        cfg = UnrealConfig('test', '')
+        cfg.add_option('Randomizer Seed', '/Script/Pal.PalGameWorldSettings', 'OptionSettings/RandomizerSeed', val_type='str')
+        cfg.add_option('Randomizer Pal Level Random', '/Script/Pal.PalGameWorldSettings', 'OptionSettings/bIsRandomizerPalLevelRandom', val_type='bool')
+        cfg.add_option('Day Time Speed Rate', '/Script/Pal.PalGameWorldSettings', 'OptionSettings/DayTimeSpeedRate', val_type='float')
+        cfg.add_option('Crossplay Platforms', '/Script/Pal.PalGameWorldSettings', 'OptionSettings/CrossplayPlatforms', val_type='list')
+
+        cfg.set_value('Randomizer Seed', 'Random Seed')
+        cfg.set_value('Randomizer Pal Level Random', True)
+        cfg.set_value('Day Time Speed Rate', 1.5)
+        cfg.set_value('Crossplay Platforms', ['Steam', 'Epic'])
+
+        expected = '''[/Script/Pal.PalGameWorldSettings]
+OptionSettings=(RandomizerSeed="Random Seed",bIsRandomizerPalLevelRandom=True,DayTimeSpeedRate=1.500000,CrossplayPlatforms=(Steam,Epic))
+'''
+        self.assertEqual(expected, cfg.fetch())
+
     def test_ark(self):
         """
         ARK has some complicated datatypes we need to support.
