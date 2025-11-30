@@ -33,8 +33,8 @@ export async function cmdStreamer(target, cmd, res) {
 			// bash expressions, pipes, redirects, etc. will work. Use `bash -lc` which
 			// runs the command string through a login-ish shell; fall back to `sh -c`
 			// if bash is not available on the system.
-			spawnCommand = 'bash';
-			spawnArgs = ['-lc', `'${cmd}'`];
+			spawnCommand = '/usr/bin/bash';
+			spawnArgs = ['-lc', cmd];
 		} else {
 			// Run the remote command under bash on the remote host so complex shell
 			// constructs (pipes, redirects, &&, etc.) don't require fragile quoting.
