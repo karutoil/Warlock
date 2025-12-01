@@ -37,7 +37,7 @@ class BaseConfig:
 								option.get('name'),
 								option.get('section'),
 								option.get('key'),
-								option.get('default'),
+								option.get('default', None),
 								option.get('type', 'str'),
 								option.get('help', ''),
 								option.get('options', None)
@@ -58,10 +58,14 @@ class BaseConfig:
 
 		# Ensure boolean defaults are stored as strings
 		# They get re-converted back to bools on retrieval
-		if val_type == 'bool' and default is True:
-			default = 'True'
-		elif val_type == 'bool' and default is False:
-			default = 'False'
+		if val_type == 'bool':
+			if default is True:
+				default = 'True'
+			elif default is False:
+				default = 'False'
+			elif default is None:
+				# No default specified, default to False
+				default = 'False'
 
 		if default is None:
 			default = ''

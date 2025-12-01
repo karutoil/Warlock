@@ -517,13 +517,6 @@ class BaseService:
 		"""
 		pass
 
-	def post_start(self) -> bool:
-		"""
-		Perform the necessary operations for after a game has started
-		:return:
-		"""
-		pass
-
 	def start(self):
 		"""
 		Start this service in systemd

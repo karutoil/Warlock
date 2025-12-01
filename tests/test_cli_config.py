@@ -7,7 +7,6 @@ here = os.path.dirname(os.path.realpath(__file__))
 from scriptlets.warlock.cli_config import CLIConfig
 from scriptlets.warlock.base_config import BaseConfig
 import unittest
-from pprint import pprint
 
 class TestCLIConfig(unittest.TestCase):
 	def test_ark(self):

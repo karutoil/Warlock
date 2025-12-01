@@ -6,7 +6,6 @@ sys.path.insert(0, os.path.join(here, '..'))
 from scriptlets.warlock.unreal_config import UnrealConfig
 from scriptlets.warlock.base_config import BaseConfig
 import unittest
-from pprint import pprint
 
 
 class TestUnrealConfig(unittest.TestCase):
