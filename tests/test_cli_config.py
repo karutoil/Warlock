@@ -14,6 +14,7 @@ class TestCLIConfig(unittest.TestCase):
 		cfg.format = 'ExecStart=/path/to/proton run ArkAscendedServer.exe Ark?listen[OPTIONS]'
 		cfg.add_option('Session Name', 'option', 'SessionName')
 		cfg.add_option('RCON Port', 'option', 'RCONPort', 0, 'int')
+		cfg.add_option('RCON Enabled', 'option', 'RCONEnabled', False, 'bool')
 		cfg.add_option('Flag1', 'flag', 'Flag1', '', 'str')
 		cfg.add_option('Flag2', 'flag', 'Flag2', '', 'str')
 		cfg.load()
@@ -33,6 +34,12 @@ class TestCLIConfig(unittest.TestCase):
 			with open(orig_path, 'r') as f:
 				data_orig = f.read()
 			self.assertEqual(data_orig, data_new)
+
+		self.assertTrue(cfg.get_value('RCON Enabled'))
+		self.assertEqual('?SessionName="My Ark Server"?RCONPort=32330?RCONEnabled=True -Flag1=Value1 -Flag2="Some value 2"', str(cfg))
+		cfg.set_value('RCON Enabled', False)
+		self.assertFalse(cfg.get_value('RCON Enabled'))
+		self.assertEqual('?SessionName="My Ark Server"?RCONPort=32330 -Flag1=Value1 -Flag2="Some value 2"', str(cfg))
 
 	def test_similar_arguments(self):
 		cfg = CLIConfig('test')

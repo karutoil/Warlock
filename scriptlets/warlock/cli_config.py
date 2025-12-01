@@ -272,7 +272,7 @@ class CLIConfig(BaseConfig):
 					if section == 'flag':
 						flags.append('-%s' % key)
 					else:
-						opts.append('%s' % key)
+						opts.append('%s=True' % key)
 			else:
 				if '"' in raw_val:
 					raw_val = "'%s'" % raw_val
