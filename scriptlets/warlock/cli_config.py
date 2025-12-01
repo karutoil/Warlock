@@ -27,7 +27,7 @@ class CLIConfig(BaseConfig):
 		Optional format of the line in the file that contains the arguments.
 		If set will be used to automatically extract and parse the command flags.
 		
-		Use %OPTIONS% to denote where options should be injected.
+		Use [OPTIONS] to denote where options should be injected.
 		"""
 
 		self.flag_sep = '='
@@ -102,8 +102,8 @@ class CLIConfig(BaseConfig):
 		"""
 		if self.path is not None and os.path.exists(self.path) and self.format is not None:
 			# Load the file and extract the arguments line
-			if '%OPTIONS%' in self.format:
-				match = self.format[:self.format.index('%OPTIONS%')].strip()
+			if '[OPTIONS]' in self.format:
+				match = self.format[:self.format.index('[OPTIONS]')].strip()
 			else:
 				match = self.format.strip()
 
@@ -226,8 +226,8 @@ class CLIConfig(BaseConfig):
 	def save(self):
 		if self.path is not None and os.path.exists(self.path) and self.format is not None:
 			# Load the file and extract the arguments line
-			if '%OPTIONS%' in self.format:
-				match = self.format[:self.format.index('%OPTIONS%')].strip()
+			if '[OPTIONS]' in self.format:
+				match = self.format[:self.format.index('[OPTIONS]')].strip()
 			else:
 				match = self.format.strip()
 

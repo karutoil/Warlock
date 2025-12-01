@@ -12,7 +12,7 @@ from pprint import pprint
 class TestCLIConfig(unittest.TestCase):
 	def test_ark(self):
 		cfg = CLIConfig('test', os.path.join(here, 'data', 'cli_ark.service'))
-		cfg.format = 'ExecStart=/path/to/proton run ArkAscendedServer.exe Ark?listen%OPTIONS%'
+		cfg.format = 'ExecStart=/path/to/proton run ArkAscendedServer.exe Ark?listen[OPTIONS]'
 		cfg.add_option('Session Name', 'option', 'SessionName')
 		cfg.add_option('RCON Port', 'option', 'RCONPort', 0, 'int')
 		cfg.add_option('Flag1', 'flag', 'Flag1', '', 'str')
@@ -57,7 +57,7 @@ class TestCLIConfig(unittest.TestCase):
 
 	def test_valheim(self):
 		cfg = CLIConfig('test', os.path.join(here, 'data', 'cli_valheim.service'))
-		cfg.format = 'ExecStart=/home/steam/Valheim/AppFiles/valheim_server.x86_64 %OPTIONS%'
+		cfg.format = 'ExecStart=/home/steam/Valheim/AppFiles/valheim_server.x86_64 [OPTIONS]'
 		cfg.flag_sep = ' '
 		cfg.add_option('Name', 'flag', 'name', '', 'str')
 		cfg.add_option('port', 'flag', 'port', 0, 'int')
