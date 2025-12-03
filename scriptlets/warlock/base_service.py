@@ -649,7 +649,8 @@ class BaseService:
 		"""
 		if self.is_api_enabled():
 			counter = 0
-			print('Waiting for API to become available...')
+			print('Waiting for API to become available...', file=sys.stderr)
+			time.sleep(15)
 			while counter < 24:
 				players = self.get_player_count()
 				if players is not None:
@@ -660,7 +661,16 @@ class BaseService:
 						self.game.send_discord_message(msg)
 					return True
 				else:
-					print('API not available yet')
+					print('API not available yet', file=sys.stderr)
+
+				# Is the game PID still available?
+				if self.get_pid() == 0:
+					print('Game process has exited unexpectedly!', file=sys.stderr)
+					return False
+
+				if self.get_game_pid() == 0:
+					print('Game server process has exited unexpectedly!', file=sys.stderr)
+					return False
 
 				time.sleep(10)
 				counter += 1
