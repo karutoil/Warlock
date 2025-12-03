@@ -16,7 +16,7 @@ router.get('/', validate_session, csrfProtection, (req, res) => {
 	res.render('host_add');
 });
 
-router.post('/', parseForm, csrfProtection, (req, res) => {
+router.post('/', validate_session, parseForm, csrfProtection, (req, res) => {
 	const {ip, retry} = req.body;
 
 	res.locals.csrfToken = req.csrfToken();
@@ -82,7 +82,7 @@ router.post('/', parseForm, csrfProtection, (req, res) => {
 				Host.create({ ip })
 					.then(newHost => {
 						// Perform any operations required on the host
-						hostPostAdd.then(() => {
+						hostPostAdd(ip).then(() => {
 							return res.redirect('/hosts');
 						}).catch(e => {
 							console.error('Error during post-add operations:', e);

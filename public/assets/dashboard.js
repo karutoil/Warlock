@@ -1,66 +1,19 @@
 const servicesContainer = document.getElementById('servicesContainer');
 
-function createServicesTable() {
-
-	if (document.getElementById('services-table')) {
-		return; // Table already exists
-	}
-
-	let tableHTML = `
-		<div style="overflow-x: auto;">
-			<table id="services-table">
-				<thead>
-					<tr class="header">
-						<th>Host</th>
-						<th>Game</th>
-						<th>Server Name</th>
-						<th>On-Boot</th>
-						<th>Status</th>
-						<th>Port</th>
-						<th>Players</th>
-						<th>Memory</th>
-						<th>CPU</th>
-						<th>
-							Actions
-							<i id="services-loading-indicator" style="opacity:0" class="fas fa-sync-alt fa-spin"></i>
-						</th>
-					</tr>
-				</thead>
-				<tbody></tbody>
-			</table>
-		</div>
-	`;
-
-	servicesContainer.innerHTML = tableHTML;
-}
-
 /**
  *
- * @param servicesWithStats {[{app: AppData, host: HostAppData, service: ServiceData}]}
+ * @param servicesWithStats {app: AppData, host: HostAppData, service: ServiceData}
  */
 function populateServicesTable(servicesWithStats) {
-	console.log('Populating table with services:', servicesWithStats);
+	const table = document.getElementById('services-table'),
+		now = parseInt(Date.now() / 1000),
+		threshold = now - 45, // 45 seconds ago
+		app_guid = servicesWithStats.app.guid,
+		host = servicesWithStats.host;
 
-	if (servicesWithStats.length === 0) {
-		servicesContainer.innerHTML = '<p style="color: #87ceeb; text-align: center; padding: 2rem;">No services found.</p>';
-		return;
-	}
-	else {
-		createServicesTable();
-	}
-
-	const table = document.getElementById('services-table');
-
-	table.querySelectorAll('tr.service').forEach(row => {
-		row.dataset.found = '0'; // Mark all existing rows as not found
-	});
-
-	servicesWithStats.forEach(record => {
-		let service = record.service,
-			app_guid = record.app,
-			host = record.host,
-			row = table.querySelector('tr.service[data-host="' + host.host + '"][data-service="' + service.service + '"]'),
-			fields = ['host', 'icon', 'name', 'enabled', 'status', 'port', 'players', 'memory', 'cpu', 'actions'],
+	Object.values(servicesWithStats.services).forEach(service => {
+		let row = table.querySelector('tr.service[data-host="' + host.host + '"][data-service="' + service.service + '"]'),
+			fields = ['host', 'icon', 'name', 'enabled', 'status', 'port', 'players', 'memory', 'cpu', 'age', 'actions'],
 			statusIcon = '',
 			actionButtons = [],
 			enabledField = '',
@@ -130,11 +83,19 @@ function populateServicesTable(servicesWithStats) {
 			fields.forEach(field => {
 				const cell = document.createElement('td');
 				cell.className = field;
+
+				if (field === 'age') {
+					cell.title = 'Data Last Updated';
+				}
+				else if (field === 'cpu') {
+					cell.title = 'Percentage of a single thread process (100% being 1 full thread usage)';
+				}
+
 				row.appendChild(cell);
 			});
 		}
 
-		row.dataset.found = '1'; // Mark as found
+		row.dataset.updated = String(now); // Mark as found
 		row.classList.remove('updating');
 
 		fields.forEach(field => {
@@ -143,6 +104,12 @@ function populateServicesTable(servicesWithStats) {
 
 			if (field === 'host') {
 				val = renderHostName(host.host);
+			}
+			else if (field === 'age') {
+				val = 'NOW';
+				cell.classList.add('status-fresh');
+				cell.classList.remove('status-idle');
+				cell.classList.remove('status-disconnected');
 			}
 			else if (field === 'status') {
 				// Check if this service has an exec/pre-exec error
@@ -190,26 +157,42 @@ function populateServicesTable(servicesWithStats) {
 		});
 	});
 
-	table.querySelectorAll('tr.service').forEach(row => {
-		if (row.dataset.found === '0') {
-			// Remove rows not found in the latest data
-			row.remove();
-			console.debug('Removed stale row for service:', row.dataset.service);
-		}
+	// Services have been loaded, (at least one), remove "no services" and "services loading" messages
+	if (table.querySelector('tr.no-services-available')) {
+		table.querySelector('tr.no-services-available').remove();
+	}
+	table.querySelectorAll('tr.service-loading').forEach(row => {
+		row.remove();
 	});
 }
 
+function noServicesAvailable() {
+	const table = document.getElementById('services-table'),
+		row = document.createElement('tr'),
+		colSpan = table.querySelectorAll('th').length,
+		cell = document.createElement('td');
+
+	row.className = 'service no-services-available';
+	table.querySelector('tbody').appendChild(row);
+
+	cell.colSpan = colSpan;
+	cell.innerHTML = '<p class="warning-message">No services available. Please install applications to manage their services here.</p>';
+	row.appendChild(cell);
+}
+
 async function loadAllServicesAndStats() {
-	if (document.getElementById('services-loading-indicator')) {
-		document.getElementById('services-loading-indicator').style.opacity = '1';
-	}
-
-	fetchServices().then(services => {
-		console.debug('Fetched services:', services);
-		populateServicesTable(services);
-
-		if (document.getElementById('services-loading-indicator')) {
-			document.getElementById('services-loading-indicator').style.opacity = '0';
+	stream('/api/services/stream', 'GET',{},null,(event, data) => {
+		if (event === 'message') {
+			try {
+				let parsed = JSON.parse(data);
+				populateServicesTable(parsed);
+			}
+			catch (error) {
+				console.error('Error parsing service stream data:', error, data);
+			}
+		}
+		else {
+			console.warn('Service stream error:', data);
 		}
 	});
 }
@@ -314,6 +297,8 @@ function displayNoHosts() {
 			</div>
 		</div>
 	`;
+
+	document.getElementById('servicesContainer').innerHTML = '';
 }
 
 
@@ -330,10 +315,52 @@ window.addEventListener('DOMContentLoaded', () => {
 
 			loadAllServicesAndStats();
 
-			// Auto-refresh every 5 seconds
+			// Refresh timer every second
 			setInterval(() => {
-				loadAllServicesAndStats();
-			}, 10000);
+				const table = document.getElementById('services-table'),
+					rows = table.querySelectorAll('tr.service'),
+					now = parseInt(Date.now() / 1000);
+
+				rows.forEach(row => {
+					const updated = parseInt(row.dataset.updated),
+						age = now - updated,
+						ageCell = row.querySelector('td.age');
+
+					if (updated > 0 && ageCell) {
+						ageCell.innerText = age < 2 ? 'NOW' : age + 's';
+
+						if (age > 60) {
+							// Remove this row entirely after 60 seconds of no updates
+							row.remove();
+						}
+						else if (age >= 40) {
+							ageCell.classList.remove('status-fresh');
+							ageCell.classList.remove('status-idle');
+							ageCell.classList.add('status-disconnected');
+						}
+						else if (age >= 30) {
+							ageCell.classList.remove('status-fresh');
+							ageCell.classList.add('status-idle');
+							ageCell.classList.remove('status-disconnected');
+						}
+						else if (age <= 5) {
+							ageCell.classList.add('status-fresh');
+							ageCell.classList.remove('status-idle');
+							ageCell.classList.remove('status-disconnected');
+						}
+						else {
+							ageCell.classList.remove('status-fresh');
+							ageCell.classList.remove('status-idle');
+							ageCell.classList.remove('status-disconnected');
+						}
+					}
+				});
+
+				// Are there no records?
+				if (table.querySelectorAll('tr.service').length === 0) {
+					noServicesAvailable();
+				}
+			}, 1000);
 		}).catch(error => {
 			document.getElementById('applicationsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
 			console.error('Error fetching applications:', error);

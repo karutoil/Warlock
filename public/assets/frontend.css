@@ -667,8 +667,16 @@ button.action-cancel:hover {
 	border-radius: 0.5rem;
 }
 
+#services-table th.age,
+#services-table td.age {
+	min-width: 4rem;
+	text-align: right;
+	transition: all 0.3s ease;
+}
+
 #services-table td.status.status-running,
-#rulesContainer td.status-allow {
+#rulesContainer td.status-allow,
+#services-table td.age.status-fresh {
 	color: var(--status-running);
 }
 
@@ -677,13 +685,18 @@ button.action-cancel:hover {
 	animation: blinker 4s infinite;
 }
 
+#services-table td.age.status-idle {
+	color: var(--status-starting);
+}
+
 #services-table td.status.status-stopped,
+#services-table td.age.status-disconnected,
 #rulesContainer td.status-deny,
 #rulesContainer td.status-reject {
 	color: var(--status-stopped);
 }
 
-#services-table td.status.status-stopping {
+#services-table td.age.status-disconnected {
 	color: var(--status-stopping);
 	animation: blinker 4s infinite;
 }

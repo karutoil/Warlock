@@ -27,7 +27,9 @@ export async function hostPostAdd(host) {
 			.then(result => {
 				const osRelease = result.stdout.toLowerCase();
 				if (installFileCmds[osRelease]) {
-					return cmdRunner(host, installFileCmds[osRelease]);
+					cmdRunner(host, installFileCmds[osRelease]).then(() => {
+						resolve();
+					});
 				}
 				else {
 					reject('Could not determine OS type for host; cannot install required packages.');
