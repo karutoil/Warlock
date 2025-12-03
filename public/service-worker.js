@@ -3,7 +3,7 @@
 // forward streaming endpoints (SSE/chunked responses) directly to the network
 // so the page can receive streaming bodies unbuffered.
 
-const CACHE_NAME = 'warlock-20251203.001';
+const CACHE_NAME = 'warlock-20251203.002';
 const PRECACHE_URLS = [
 	'/assets/application_backups.js',
 	'/assets/application_configure.js',
@@ -38,6 +38,9 @@ self.addEventListener('activate', event => {
 });
 
 function shouldBypassRequest(request) {
+
+	// Skip anything to /api
+	if (request.url.startsWith('/api/')) return true;
 
 	try {
 		const bypassHeader = request.headers.get('x-bypass-service-worker');
