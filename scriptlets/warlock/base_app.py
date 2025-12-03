@@ -327,11 +327,18 @@ class BaseApp:
 				src = os.path.join(save_source, f)
 				dst = os.path.join(temp_store, 'save', f)
 				if os.path.exists(src):
-					print('Backing up save file: %s' % src)
 					if os.path.isfile(src):
+						print('Backing up save file: %s' % src)
+						if not os.path.exists(os.path.dirname(dst)):
+							os.makedirs(os.path.dirname(dst))
 						shutil.copy(src, dst)
 					else:
-						shutil.copytree(src, dst)
+						print('Backing up save directory: %s' % src)
+						if not os.path.exists(dst):
+							os.makedirs(dst)
+						shutil.copytree(src, dst, dirs_exist_ok=True)
+				else:
+					print('Save file %s does not exist, skipping...' % src, file=sys.stderr)
 
 		return temp_store
 
