@@ -64,25 +64,13 @@ if [[ $(id -u) -ne 0 ]]; then
 	exit 1
 fi
 
-# Locate node
-if ! NODE_BIN=$(command -v node); then
-	echo "Node.js binary not found in PATH. Install Node.js or make it available in PATH." >&2
-	exit 1
-fi
-
-if ! which -s nginx; then
-	echo "Warning: Nginx not found in PATH. You may need to set up a reverse proxy manually." >&2
-	CONFIGURE_NGINX=0
-fi
-
-VERSION="$(node --version | sed 's:v::' | cut -d '.' -f 1)"
-if [[ "$VERSION" -lt 20 ]]; then
-	echo "Node.js version 20 or higher is required. Detected version: $VERSION" >&2
-	echo "" >&2
-	echo "If you are on Ubuntu/Debian, you can use the following to install v20:" >&2
-	echo '  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -' >&2
-	echo '  sudo apt-get install -y nodejs' >&2
-	exit 1
+# Confirm this script is located within /var/www
+if [[ "$INSTALL_DIR" != /var/www* ]]; then
+	echo "Warning: It is recommended to install Warlock within /var/www (current location: $INSTALL_DIR)" >&2
+	echo ""
+	echo "Installing in another directory may lead to the web application not working."
+	echo "Press ENTER to continue or CTRL+C to abort."
+	read -r
 fi
 
 echo "This script will configure Warlock as a system service and configure it for nginx."
@@ -99,7 +87,84 @@ echo ""
 echo "Press ENTER to continue or CTRL+C to abort."
 read -r
 
+DISTRO="$(lsb_release -i 2>/dev/null | sed "s#.*:\t##" | tr '[:upper:]' '[:lower:]')"
+
+# Locate node
+if ! which -s node; then
+	echo "Node.js binary not found in PATH. Attempting installation" >&2
+	case "$DISTRO" in
+		"ubuntu"|"debian")
+			curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+			apt install -y nodejs
+			;;
+		"centos"|"rhel"|"rocky"|"almalinux")
+			curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+			yum install -y nodejs
+			;;
+		"fedora")
+			curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+			dnf install -y nodejs
+			;;
+		*)
+			echo "Automatic Node.js installation not supported on this distribution ($DISTRO). Please install Node.js v20 or higher manually." >&2
+			exit 1
+			;;
+	esac
+fi
+
+if ! NODE_BIN=$(command -v node); then
+	echo "Node.js binary not found in PATH.  Cannot continue!" >&2
+	exit 1
+fi
+
+VERSION="$(node --version | sed 's:v::' | cut -d '.' -f 1)"
+if [[ "$VERSION" -lt 20 ]]; then
+	echo "Node.js version 20 or higher is required. Detected version: $VERSION" >&2
+	echo "" >&2
+	echo "If you are on Ubuntu/Debian, you can use the following to install v20:" >&2
+	echo '  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -' >&2
+	echo '  sudo apt-get install -y nodejs' >&2
+	exit 1
+fi
+
 if [ $CONFIGURE_NGINX -eq 1 ]; then
+	if ! which -s nginx; then
+    	echo "Warning: Nginx not found in PATH.  Attempting auto install" >&2
+    	case "$DISTRO" in
+			"ubuntu"|"debian")
+				apt install -y nginx
+				;;
+			"centos"|"rhel"|"rocky"|"almalinux")
+				yum install -y nginx
+				;;
+			"fedora")
+				dnf install -y nginx
+				;;
+			*)
+				echo "Automatic Nginx installation not supported on this distribution ($DISTRO). Please install Nginx manually or re-run this script with --skip-nginx." >&2
+				exit 1
+				;;
+		esac
+    fi
+
+    if ! which -s certbot; then
+		echo "Warning: certbot not found in PATH.  Attempting auto install" >&2
+		case "$DISTRO" in
+			"ubuntu"|"debian")
+				apt install -y certbot python3-certbot-nginx
+				;;
+			"centos"|"rhel"|"rocky"|"almalinux")
+				yum install -y certbot python3-certbot-nginx
+				;;
+			"fedora")
+				dnf install -y certbot python3-certbot-nginx
+				;;
+			*)
+				echo "Automatic certbot installation not supported on this distribution ($DISTRO). Please install certbot manually if you wish to use SSL certificates." >&2
+				;;
+		esac
+	fi
+
 	FQDN=""
 	if [ -e "/etc/nginx/sites-available/warlock" ]; then
 		FQDN=$(grep -m1 'server_name' /etc/nginx/sites-available/warlock | awk '{print $2}' | tr -d ';')
@@ -163,7 +228,6 @@ if [ ! -e "$ENV_FILE" ]; then
 PORT=3077
 NODE_ENV=production
 SESSION_SECRET=$SECRET
-SKIP_AUTHENTICATION=false
 ENV
 	if [ "$SERVICE_USER" != "root" ]; then
 		chown "$SERVICE_USER":"$SERVICE_USER" "$ENV_FILE"
@@ -189,6 +253,11 @@ if [ $CONFIGURE_NGINX -eq 1 ]; then
 	if [[ -f "$NGINX_AVAILABLE" ]]; then
 		TS=$(date +%s)
 		cp -a "$NGINX_AVAILABLE" "${NGINX_AVAILABLE}.bak.$TS"
+	fi
+
+	if [ -h /etc/nginx/sites-enabled/default ]; then
+		echo "Removing default nginx site symlink"
+		unlink /etc/nginx/sites-enabled/default
 	fi
 
 	TMP_NGINX=$(mktemp)
@@ -235,7 +304,7 @@ NGINX
 		echo "Nginx configuration OK — reloading nginx"
 		systemctl reload nginx || echo "Warning: failed to reload nginx" >&2
 
-		if which -s certbot; then
+		if which -s certbot && [ "$FQDN" != "_" ]; then
 			echo "Attempting to obtain/renew SSL certificate via certbot for $FQDN"
 			certbot --nginx -d "$FQDN" --non-interactive --agree-tos --redirect || echo "Warning: certbot failed to obtain/renew certificate" >&2
 		else
