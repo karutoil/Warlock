@@ -584,7 +584,9 @@ async function stream(
 		// Ensure streaming requests bypass the service worker by setting a special header.
 		// Do not modify caller-provided headers object directly; clone it first.
 		const reqHeaders = Object.assign({}, headers || {});
-		reqHeaders['x-bypass-service-worker'] = '1';
+		reqHeaders['X-Bypass-Service-Worker'] = '1';
+		reqHeaders['Cache-Control'] = 'no-cache';
+		reqHeaders['Connection'] = 'keep-alive';
 
 		const res = await fetch(url, {
 			method: method,

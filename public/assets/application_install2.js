@@ -146,7 +146,7 @@ window.addEventListener('DOMContentLoaded', () => {
 				installIcon.style.display = 'none';
 
 				// Gather options
-				const optionElements = installOptions.querySelectorAll('input');
+				const optionElements = installOptions.querySelectorAll('input,select');
 				const options = [];
 				optionElements.forEach(input => {
 					if (input.type === 'checkbox') {

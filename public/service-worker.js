@@ -4,7 +4,7 @@
 // so the page can receive streaming bodies unbuffered.
 
 // Version string for this service worker; bumping this (or changing the file) will trigger an update.
-const SW_VERSION = '20251203.003';
+const SW_VERSION = '20251204.002';
 const CACHE_NAME = 'warlock-' + SW_VERSION;
 const PRECACHE_URLS = [
 	'/assets/application_backups.js',

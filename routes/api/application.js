@@ -18,7 +18,7 @@ const router = express.Router();
 router.put('/:guid/:host', validate_session, (req, res) => {
 	const guid = req.params.guid,
 		host = req.params.host,
-		options = req.body.options || {};
+		options = req.body.options || [];
 
 	if (!guid || !host) {
 		return res.status(400).json({ success: false, error: 'Missing guid or host' });
