@@ -32,6 +32,10 @@
 	--terminal-error: #ff4c4c;
 	--terminal-bg: rgba(0, 0, 0, 1);
 	--terminal-border: rgba(0, 150, 255, 0.3);
+	--button: #2b2b2b;
+	--button-bg-1: rgba(253, 253, 255, 1);
+	--button-bg-2: rgba(118, 139, 152, 1);
+	--button-shadow: rgba(97, 126, 147, 0.4);
 	--button-config: white;
 	--button-config-bg-1: #3b82f6;
 	--button-config-bg-2: #2563eb;
@@ -41,7 +45,7 @@
 	--button-create-shadow: rgba(34, 197, 94, 0.4);
 	--button-start: white;
 	--button-start-bg-1: #22c55e;
-	--button-start-bg-2: #16a34a;
+	--button-start-bg-2: #0b8136;
 	--button-start-shadow: rgba(34, 197, 94, 0.4);
 	--button-stop: white;
 	--button-stop-bg-1: #ef4444;
@@ -49,15 +53,15 @@
 	--button-stop-shadow: rgba(239, 68, 68, 0.4);
 	--button-browse: white;
 	--button-browse-bg-1: #667eea;
-	--button-browse-bg-2: #5a67d8;
-	--button-browse-shadow: rgba(6, 23, 80, 0.4);
+	--button-browse-bg-2: #3844aa;
+	--button-browse-shadow: rgba(20, 46, 131, 0.4);
 	--button-remove: white;
 	--button-remove-bg-1: #f87171;
-	--button-remove-bg-2: #ef4444;
+	--button-remove-bg-2: #b82929;
 	--button-remove-shadow: rgba(239, 68, 68, 0.4);
 	--button-save: white;
 	--button-save-bg-1: #22c55e;
-	--button-save-bg-2: #16a34a;
+	--button-save-bg-2: #0f7a37;
 	--button-save-shadow: rgba(34, 197, 94, 0.4);
 	--button-cancel: white;
 	--button-cancel-bg-1: #3e3232;
@@ -512,7 +516,7 @@ table td {
 }
 
 
-button {
+button, a.button {
 	border: none;
 	padding: 0.4rem 0.8rem;
 	border-radius: 5px;
@@ -520,11 +524,18 @@ button {
 	font-weight: 500;
 	font-size: 0.85rem;
 	transition: all 0.3s;
+	color: var(--button);
+	background: linear-gradient(160deg, var(--button-bg-1) 0%, var(--button-bg-2) 100%);
 }
-button:hover {
-	transform: translateY(-2px);
+a.button {
+	display: inline-block;
+	text-decoration: none;
 }
-button.disabled {
+button:hover, a.button:hover {
+	transform: translateY(-2px) scale(1.05);
+	box-shadow: 0 4px 8px var(--button-shadow);
+}
+button.disabled, a.button.disabled {
 	opacity: 0.6;
 	cursor: not-allowed;
 	transform: none;
@@ -548,67 +559,67 @@ button.disabled {
 	border-right: 0 none;
 }
 
-button.action-configure {
-	background: linear-gradient(135deg, var(--button-config-bg-1) 0%, var(--button-config-bg-2) 100%);
+button.action-configure, a.button.action-configure {
+	background: linear-gradient(160deg, var(--button-config-bg-1) 0%, var(--button-config-bg-2) 100%);
 	color: var(--button-config);
 }
-button.action-configure:hover {
+button.action-configure:hover, a.button.action-configure:hover {
 	box-shadow: 0 4px 8px var(--button-config-shadow);
 }
 
-button.action-create {
-	background: linear-gradient(135deg, var(--button-create-bg-1) 0%, var(--button-create-bg-2) 100%);
+button.action-create, a.button.action-create {
+	background: linear-gradient(160deg, var(--button-create-bg-1) 0%, var(--button-create-bg-2) 100%);
 	color: var(--button-create);
 }
-button.action-create:hover {
+button.action-create:hover, a.button.action-create:hover {
 	box-shadow: 0 4px 8px var(--button-create-shadow);
 }
 
-button.action-start {
-	background: linear-gradient(135deg, var(--button-start-bg-1) 0%, var(--button-start-bg-2) 100%);
+button.action-start, a.button.action-start {
+	background: linear-gradient(160deg, var(--button-start-bg-1) 0%, var(--button-start-bg-2) 100%);
 	color: var(--button-start);
 }
-button.action-start:hover {
+button.action-start:hover, a.button.action-start:hover {
 	box-shadow: 0 4px 8px var(--button-start-shadow);
 }
 
-button.action-stop {
-	background: linear-gradient(135deg, var(--button-stop-bg-1) 0%, var(--button-stop-bg-2) 100%);
+button.action-stop, a.button.action-stop {
+	background: linear-gradient(160deg, var(--button-stop-bg-1) 0%, var(--button-stop-bg-2) 100%);
 	color: var(--button-stop);
 }
-button.action-stop:hover {
+button.action-stop:hover, a.button.action-stop:hover {
 	box-shadow: 0 4px 8px var(--button-stop-shadow);
 }
 
-button.action-browse {
-	background: linear-gradient(135deg, var(--button-browse-bg-1) 0%, var(--button-browse-bg-2) 100%);
+button.action-browse, a.button.action-browse {
+	background: linear-gradient(160deg, var(--button-browse-bg-1) 0%, var(--button-browse-bg-2) 100%);
 	color: var(--button-browse);
 }
-button.action-browse:hover {
+button.action-browse:hover, a.button.action-browse:hover {
 	box-shadow: 0 4px 8px var(--button-browse-shadow);
 }
 
-button.action-remove {
-	background: linear-gradient(135deg, var(--button-remove-bg-1) 0%, var(--button-remove-bg-2) 100%);
+button.action-remove, a.button.action-remove {
+	background: linear-gradient(160deg, var(--button-remove-bg-1) 0%, var(--button-remove-bg-2) 100%);
 	color: var(--button-remove);
 }
-button.action-remove:hover {
+button.action-remove:hover, a.button.action-remove:hover {
 	box-shadow: 0 4px 8px var(--button-remove-shadow);
 }
 
-button.action-save {
-	background: linear-gradient(135deg, var(--button-save-bg-1) 0%, var(--button-save-bg-2) 100%);
+button.action-save, a.button.action-save {
+	background: linear-gradient(160deg, var(--button-save-bg-1) 0%, var(--button-save-bg-2) 100%);
 	color: var(--button-save);
 }
-button.action-save:hover {
+button.action-save:hover, a.button.action-save:hover {
 	box-shadow: 0 4px 8px var(--button-save-shadow);
 }
 
-button.action-cancel {
-	background: linear-gradient(135deg, var(--button-cancel-bg-1) 0%, var(--button-cancel-bg-2) 100%);
+button.action-cancel, a.button.action-cancel {
+	background: linear-gradient(160deg, var(--button-cancel-bg-1) 0%, var(--button-cancel-bg-2) 100%);
 	color: var(--button-cancel);
 }
-button.action-cancel:hover {
+button.action-cancel:hover, a.button.action-cancel:hover {
 	box-shadow: 0 4px 8px var(--button-cancel-shadow);
 }
 
@@ -1848,6 +1859,21 @@ button.action-cancel:hover {
 }
 
 
+/** Settings Page **/
+.version-infos {
+	display: flex;
+	gap: 1.5rem;
+	align-content: space-between;
+}
+.version-infos span {
+	flex: 1;
+	text-align: center;
+}
+
+
+/* ==========================
+   Responsive Design
+   ========================== */
 
 @media (max-width: 1400px) {
 	#services-table .host {
