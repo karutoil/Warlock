@@ -674,11 +674,42 @@ button.action-cancel:hover, a.button.action-cancel:hover {
 
 
 /* ==========================
-   Services table
+   Services and ports table
    ========================== */
 
 #services-table tbody tr.updating {
 	animation: blinker 4s infinite;
+}
+
+.ports-table .active .port a,
+.ports-table .active .port span,
+.ports-table .active .proto {
+	color: var(--status-running);
+}
+.ports-table .inactive .port a,
+.ports-table .inactive .port span,
+.ports-table .inactive .proto {
+	color: var(--status-stopped);
+}
+
+.ports-table .port a {
+	cursor: pointer;
+}
+.ports-table .port a i {
+	opacity: 0;
+	margin-left: 1rem;
+}
+.ports-table .port a:hover i {
+	opacity: 1;
+}
+.ports-table .port input {
+	display: none;
+}
+.ports-table .port.edit a {
+	display: none;
+}
+.ports-table .port.edit input {
+	display: inline-block;
 }
 
 .ports-table .form-group {
@@ -686,6 +717,10 @@ button.action-cancel:hover, a.button.action-cancel:hover {
 }
 .ports-table .form-group input {
 	max-width: 8rem;
+}
+
+.ports-table .actions span {
+	margin-right: 1rem;
 }
 
 #services-table td.icon,
@@ -712,6 +747,7 @@ button.action-cancel:hover, a.button.action-cancel:hover {
 
 #services-table td.status.status-running,
 #rulesContainer td.status-allow,
+.ports-table .status-allowed,
 #services-table td.age.status-fresh {
 	color: var(--status-running);
 }

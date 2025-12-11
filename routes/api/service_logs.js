@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/:guid/:host/:service', validate_session, (req, res) => {
 	validateHostService(req.params.host, req.params.guid, req.params.service)
 		.then(dat => {
-			cmdStreamer(dat.host.host, `journalctl -fu ${dat.service.service}.service --no-pager`, res);
+			cmdStreamer(dat.host.host, `journalctl -qfu ${dat.service.service}.service --no-pager`, res);
 		})
 		.catch(e => {
 			res.status(400).send(`Could not render service logs: ${e.error.message}`);

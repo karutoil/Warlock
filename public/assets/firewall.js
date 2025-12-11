@@ -8,6 +8,8 @@ const {host} = getPathParams('/host/firewall/:host'),
 	portsTableBody = document.getElementById('portsTableBody'),
 	globalRules = [];
 
+let firewallActive = false;
+
 function sanitizeForPreview(text){
 	return (text || '').replace(/[<>\n\r]/g, '');
 }
@@ -33,6 +35,11 @@ function renderRules(rules){
 			// Register global rule for later use
 			globalRules.push(rule);
 		}
+
+		tr.dataset.to = rule.to;
+		tr.dataset.protocol = (rule.proto || 'any').toUpperCase();
+		tr.dataset.from = rule.from;
+		tr.dataset.action = (rule.action || '').toUpperCase();
 
 		tdTo.textContent = rule.to;
 		tdFrom.textContent = rule.from || 'any';
@@ -90,6 +97,7 @@ async function fetchRules(){
 				statusNotInstalled.style.display = 'none';
 				btnEnableFirewall.style.display = 'none';
 				btnPauseFirewall.style.display = 'inline-block';
+				firewallActive = true;
 			}
 			else if (resp.status === 'inactive') {
 				statusActive.style.display = 'none';
@@ -97,6 +105,7 @@ async function fetchRules(){
 				statusNotInstalled.style.display = 'none';
 				btnEnableFirewall.style.display = 'inline-block';
 				btnPauseFirewall.style.display = 'none';
+				firewallActive = false;
 			}
 			else {
 				statusActive.style.display = 'none';
@@ -104,6 +113,7 @@ async function fetchRules(){
 				statusNotInstalled.style.display = 'flex';
 				btnEnableFirewall.style.display = 'none';
 				btnPauseFirewall.style.display = 'none';
+				firewallActive = false;
 			}
 
 			renderRules(resp.rules || []);
@@ -128,11 +138,11 @@ function checkInGlobalRules(port, protocol) {
 		if (rule.to.includes(':')) {
 			const [start, end] = rule.to.split(':').map(Number);
 			if (start <= Number(port) && Number(port) <= end) {
-				return true;
+				return rule.to;
 			}
 		}
 		else if (Number(rule.to) === Number(port)) {
-			return true;
+			return rule.to;
 		}
 	}
 
@@ -189,7 +199,7 @@ function updateConfig(app_guid, service, option, newValue) {
 }
 
 async function fetchPorts() {
-	portsTableBody.innerHTML = '<tr><td colspan="6">Loading...</td></tr>';
+	portsTableBody.innerHTML = '<tr><td colspan="5">Loading...</td></tr>';
 	fetchApplications().then(apps => {
 		fetch(`/api/ports/${host}`, { method: 'GET' })
 			.then(response => response.json())
@@ -198,72 +208,146 @@ async function fetchPorts() {
 
 				// resp is an array of Objects with config, description, guid, port, protocol, and service.
 				// sort them by the port number
-				resp.ports.sort((a,b) => a.port - b.port);
+				resp.ports.sort((a, b) => a.port - b.port);
 				resp.ports.forEach((port) => {
 					const row = document.createElement('tr'),
 						tdGame = document.createElement('td'),
 						tdPort = document.createElement('td'),
 						tdProto = document.createElement('td'),
-						tdService = document.createElement('td'),
 						tdDescription = document.createElement('td'),
-						tdAction = document.createElement('td');
-
-					console.log(port, checkInGlobalRules(port.port, port.protocol));
+						tdAction = document.createElement('td'),
+						existingPort = checkInGlobalRules(port.port, port.protocol);
 
 					tdGame.className = 'icon';
 					tdGame.innerHTML = renderAppIcon(port.guid);
 					tdProto.textContent = port.protocol.toUpperCase();
-					tdService.textContent = port.service || '';
+					tdProto.className = 'proto';
 					tdDescription.textContent = port.description || '';
 
-					let input;
 					if (port.config) {
 						// Ports with configuration parameters can be changed!
-						input = `<input type="number" value="${port.port}" min="1" max="65535" data-guid="${port.guid}" data-config="${port.config}" data-service="${port.service}" class="port-input"/>`;
-					}
-					else {
-						input = `<input type="number" value="${port.port}" readonly=readonly class="port-input"/>`;
-					}
-					tdPort.innerHTML = '<div class="form-group">' + input + '</div>';
+						const a = document.createElement('a'),
+							input = document.createElement('input'),
+							div = document.createElement('div');
 
-					if (checkInGlobalRules(port.port, port.protocol)) {
-						tdAction.innerHTML = '<span class="status-allowed"><i class="fas fa-check"></i> Allowed Globally</span>';
+						a.className = 'configurable-port';
+						a.title = 'Click to configure';
+						a.innerHTML = `${port.port} <i class="edit-icon fas fa-pencil"></i>`;
+						a.addEventListener('click', (e) => {
+							portsTableBody.querySelectorAll('.port.edit').forEach(td => {
+								td.classList.remove('edit');
+							});
+
+							const td = e.target.closest('td');
+							td.classList.add('edit');
+							td.querySelector('input').focus();
+						});
+
+						input.type = 'number';
+						input.value = port.port;
+						input.min = '1';
+						input.max = '65535';
+						input.dataset.port = port.port;
+						input.dataset.guid = port.guid;
+						input.dataset.config = port.config;
+						input.dataset.service = port.service;
+						input.className = 'port-input';
+
+						input.addEventListener('change', (e) => {
+							let input = e.target,
+								newPort = parseInt(input.value, 10),
+								guid = input.dataset.guid,
+								config = input.dataset.config,
+								service = input.dataset.service;
+
+							if (isNaN(newPort) || newPort < 1 || newPort > 65535) {
+								showToast('error', 'Invalid port number');
+								return;
+							}
+
+							updateConfig(guid, service, config, newPort);
+						});
+
+						input.addEventListener('keyup', (e) => {
+							if (e.key === 'Escape') {
+								const td = e.target.closest('td');
+								input.value = input.dataset.port;
+								td.classList.remove('edit');
+							}
+						});
+
+						div.className = 'form-group';
+						div.appendChild(a);
+						div.appendChild(input);
+						tdPort.appendChild(div);
+					} else {
+						const span = document.createElement('span');
+						span.innerHTML = port.port;
+						tdPort.appendChild(span);
 					}
-					else {
-						tdAction.innerHTML = `<button class="add-port-rule" data-port="${port.port}" data-protocol="${port.protocol}" data-comment="${port.description}"><i class="fas fa-plus"></i> Add to Allow Rules</button>`;
+					tdPort.className = 'port';
+
+					if (existingPort) {
+						tdAction.innerHTML = '<span class="status-allowed"><i class="fas fa-check"></i> Allowed</span>';
+						const delBtn = document.createElement('button');
+						delBtn.className = 'action-remove';
+						delBtn.innerHTML = '<i class="fas fa-trash"></i>';
+						delBtn.title = 'Remove Rule';
+						delBtn.addEventListener('click', () => {
+							// populate delete modal
+							const spec = {
+								action: 'allow',
+								proto: port.protocol,
+								from: 'any',
+								to: existingPort
+							};
+							// Show a sanitized preview
+							document.getElementById('deleteRulePreview').textContent =
+								`To: ${sanitizeForPreview(spec.port || spec.to || 'any')}\nFrom: ${sanitizeForPreview(spec.from || 'any')}\nAction: ${sanitizeForPreview(spec.action)}`;
+							document.getElementById('delRuleSpec').value = JSON.stringify(spec);
+							deleteModal.classList.add('show');
+						});
+						tdAction.appendChild(delBtn);
+
+						// For existing rules, show that they are allowed if the firewall is enabled.
+						if (firewallActive) {
+							row.classList.add('active');
+						}
+
+						// Hide the duplicate entry in the "other ports" section
+						tableBody.querySelectorAll('tr').forEach(tr => {
+							if (
+								tr.dataset.to === existingPort &&
+								tr.dataset.action === 'ALLOW' &&
+								(tr.dataset.protocol === 'ANY' || tr.dataset.protocol === port.protocol.toUpperCase()) &&
+								(tr.dataset.from || 'any') === 'any'
+							) {
+								tr.style.display = 'none';
+							}
+						});
+					} else {
+						const addBtn = document.createElement('button');
+						addBtn.dataset.port = port.port;
+						addBtn.dataset.protocol = port.protocol;
+						addBtn.dataset.comment = port.description;
+						addBtn.innerHTML = '<i class="fas fa-plus"></i> Allow Globally';
+						addBtn.addEventListener('click', () => {
+							addRule('ALLOW', addBtn.dataset.port, 'any', addBtn.dataset.protocol, addBtn.dataset.comment);
+						});
+						tdAction.appendChild(addBtn);
+
+						if (firewallActive) {
+							row.classList.add('inactive');
+						}
 					}
+					tdAction.className = 'actions';
 
 					row.appendChild(tdGame);
 					row.appendChild(tdPort);
 					row.appendChild(tdProto);
-					row.appendChild(tdService);
 					row.appendChild(tdDescription);
 					row.appendChild(tdAction);
 					portsTableBody.appendChild(row);
-				});
-
-				portsTableBody.querySelectorAll('.add-port-rule').forEach(el => {
-					el.addEventListener('click', (e) => {
-						let btn = e.target;
-						addRule('ALLOW', btn.dataset.port, 'any', btn.dataset.protocol, btn.dataset.comment);
-					});
-				});
-
-				portsTableBody.querySelectorAll('input').forEach(el => {
-					el.addEventListener('change', (e) => {
-						let input = e.target,
-							newPort = parseInt(input.value, 10),
-							guid = input.dataset.guid,
-							config = input.dataset.config,
-							service = input.dataset.service;
-
-						if (isNaN(newPort) || newPort < 1 || newPort > 65535) {
-							showToast('error', 'Invalid port number');
-							return;
-						}
-
-						updateConfig(guid, service, config, newPort);
-					});
 				});
 			});
 	});
