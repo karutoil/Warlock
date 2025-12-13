@@ -71,6 +71,7 @@ const PORT = process.env.PORT || 3077;
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const {logger} = require("./libs/logger.mjs");
+const {push_analytics} = require("./libs/push_analytics.mjs");
 //const SQLiteStore = require('connect-sqlite3')(session);
 
 // Load environment variables
@@ -83,31 +84,11 @@ app.set('view engine', 'ejs')
 
 app.use(cookieParser());
 
-/*passport.use(new LocalStrategy(
-    function(username, password, done) {
-        User.findOne({ where: { username: username } }).then(user => {
-            if (err) { return done(err); }
-            if (!user) { return done(null, false, { message: 'Incorrect username.' }); }
-            user.validatePassword(password).then(isValid => {
-                if (!isValid) {
-                    return done(null, false, { message: 'Incorrect password.' });
-                }
-                return done(null, user);
-            });
-        });
-    }
-));*/
-
-
 app.use(session({
     secret: process.env.SESSION_SECRET || 'warlock_secret_key',
     resave: false, // don't save session if unmodified
     saveUninitialized: false, // don't create session until something stored
 }));
-
-
-
-
 
 
 /***************************************************************
@@ -169,77 +150,10 @@ app.use('/api/firewall', require('./routes/api/firewall'));
 app.use('/api/ports', require('./routes/api/ports'));
 
 
-/*// Recursive file search endpoint
-app.post('/search-files', (req, res) => {
-    const { path, query } = req.body;
-    
-    if (!path || !query) {
-        return res.json({
-            success: false,
-            error: 'Path and search query are required'
-        });
-    }
-    
-    logger.info('Searching for:', query, 'in path:', path);
-    
-    // Use find command to search recursively
-    // -iname for case-insensitive search
-    // -type f for files, -type d for directories
-    // Use both to find files and folders
-    // Exclude hidden files with ! -name ".*"
-    const searchCommand = buildSSHCommand(`
-        cd "${path}" 2>/dev/null || exit 1
-        find . -maxdepth 10 \\( -type f -o -type d \\) ! -name ".*" -iname "*${query}*" 2>/dev/null | while read item; do
-            fullpath="${path}/\${item#./}"
-            if [ -d "$fullpath" ]; then
-                echo "DIR|$fullpath|$(basename "$fullpath")"
-            else
-                size=$(stat -c %s "$fullpath" 2>/dev/null || echo 0)
-                echo "FILE|$fullpath|$(basename "$fullpath")|$size"
-            fi
-        done | head -100
-    `);
-    
-    exec(searchCommand, (error, stdout, stderr) => {
-        if (error) {
-            logger.error('Search error:', error);
-            return res.json({
-                success: false,
-                error: `Search failed: ${error.message}`
-            });
-        }
-        
-        const results = [];
-        const lines = stdout.trim().split('\n').filter(line => line);
-        
-        lines.forEach(line => {
-            const parts = line.split('|');
-            if (parts.length >= 3) {
-                const type = parts[0] === 'DIR' ? 'directory' : 'file';
-                const path = parts[1];
-                const name = parts[2];
-                const size = parts[3] ? parseInt(parts[3]) : 0;
-                
-                results.push({
-                    type: type,
-                    path: path,
-                    name: name,
-                    size: size,
-                    permissions: '-'
-                });
-            }
-        });
-        
-        logger.info(`Found ${results.length} results for "${query}"`);
-        res.json({
-            success: true,
-            results: results,
-            count: results.length
-        });
-    });
-});*/
-
 // Start the server
 app.listen(PORT, '127.0.0.1', () => {
     logger.info(`Listening on ${PORT}`);
+
+    // Send a tracking snippet to our analytics server so we can monitor basic usage.
+    push_analytics('Start');
 });

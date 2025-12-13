@@ -45,6 +45,16 @@ const Host = sequelize.define('Host', {
 	}
 });
 
+// Simple key-value meta model for storing miscellaneous data
+const Meta = sequelize.define('Meta', {
+	key: {
+		type: DataTypes.STRING
+	},
+	value: {
+		type: DataTypes.STRING
+	}
+});
+
 // Sync database - alter: true will update schema without dropping data
 sequelize.sync({ alter: true }).then(() => {
 	console.log('Database synced successfully');
@@ -55,5 +65,6 @@ sequelize.sync({ alter: true }).then(() => {
 module.exports = {
 	sequelize,
 	User,
-	Host
+	Host,
+	Meta
 };

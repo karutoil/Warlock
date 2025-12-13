@@ -7,6 +7,7 @@ const {logger} = require("../../libs/logger.mjs");
 const {Host} = require("../../db");
 const {getAllApplications} = require("../../libs/get_all_applications.mjs");
 const {clearCache} = require("../../libs/cache.mjs");
+const {push_analytics} = require("../../libs/push_analytics.mjs");
 
 const router = express.Router();
 
@@ -71,6 +72,7 @@ router.put('/:guid/:host', validate_session, (req, res) => {
 				});
 
 				logger.info(`Installing ${appData.title} on host ${host} with flags ${cliFlags}`);
+				push_analytics(`App Install / ${appData.title}`);
 
 				// Build a command that streams the installer directly into bash to avoid writing to /tmp
 				// It prefers curl, falls back to wget, and prints a clear error if neither is available.

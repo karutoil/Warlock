@@ -7,8 +7,8 @@ const {logger} = require('../../libs/logger.mjs');
 const router = express.Router();
 
 /**
- * POST /api/application/backup/:guid/:host
- * Trigger a backup on the remote host. No filename required; manage.py will pick one.
+ * POST /api/application/update/:guid/:host
+ * Trigger an application update/installation on the remote host.
  */
 router.post('/:guid/:host', validate_session, (req, res) => {
 	const guid = req.params.guid,

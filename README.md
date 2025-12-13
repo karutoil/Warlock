@@ -113,6 +113,17 @@ for example code and instructions on getting started!
 * [Join our Discord](https://discord.gg/jyFsweECPb)
 * [Follow us on Mastodon](https://social.bitsnbytes.dev/@sitenews)
 
+
+## Analytics Collection
+
+To help improve Warlock, we collect some anonymous analytics data.
+
+This includes:
+
+* Version of Warlock installed
+* Server OS name and version
+* Games installed
+
 ## AI / LLM Disclaimer
 
 Warlock was originally generated with various models including GPT-5 and Claude Sonnet 4.5
