@@ -535,9 +535,9 @@ async function loadHost(host) {
  * @param {*} body Request body to send (default: null)
  * @param {function} messageHandler Callback function to handle parsed events (event, data)
  * @param {bool} reconnect Whether to attempt reconnection on disconnect (default: false)
- * @returns {Promise<void>}
+ * @returns {Promise<void> & {controller:AbortController, cancel:function}} Promise that resolves when the stream completes. The returned promise is augmented with a `.controller` (AbortController) and `.cancel()` to allow external cancellation.
  */
-async function stream(
+function stream(
 	url,
 	method = 'POST',
 	headers = {},
@@ -545,11 +545,13 @@ async function stream(
 	messageHandler = null,
 	reconnect = false
 ) {
-	let controller = null;
-	let reader = null;
-
-	controller = new AbortController();
+	// We'll return a promise that resolves when the stream ends. Attach controller and cancel to the
+	// returned promise so callers can cancel the stream (either via `.controller.abort()` or `.cancel()`).
+	let controller = new AbortController();
 	const signal = controller.signal;
+	let reader = null;
+	let reconnectTimer = null;
+	let abortedByClient = false;
 
 	const parseSSEBlock = (block) => {
 		// Parse SSE-style block (lines like "data: ..." and optionally "event: ...")
@@ -576,86 +578,111 @@ async function stream(
 		}
 
 		if (messageHandler) {
-			messageHandler(event, data);
+			try { messageHandler(event, data); } catch (e) { console.error('messageHandler error', e); }
 		}
-	}
+	};
 
-	try {
-		// Ensure streaming requests bypass the service worker by setting a special header.
-		// Do not modify caller-provided headers object directly; clone it first.
-		const reqHeaders = Object.assign({}, headers || {});
-		reqHeaders['X-Bypass-Service-Worker'] = '1';
-		reqHeaders['Cache-Control'] = 'no-cache';
-		reqHeaders['Connection'] = 'keep-alive';
+	const p = new Promise(async (resolve, reject) => {
+		try {
+			// Ensure streaming requests bypass the service worker by setting a special header.
+			// Do not modify caller-provided headers object directly; clone it first.
+			const reqHeaders = Object.assign({}, headers || {});
+			reqHeaders['X-Bypass-Service-Worker'] = '1';
+			reqHeaders['Cache-Control'] = 'no-cache';
+			reqHeaders['Connection'] = 'keep-alive';
 
-		const res = await fetch(url, {
-			method: method,
-			headers: reqHeaders,
-			body: body,
-			signal
-		}).catch(e => {
-			console.error(e);
-		});
+			const res = await fetch(url, {
+				method: method,
+				headers: reqHeaders,
+				body: body,
+				signal
+			}).catch(e => {
+				console.error(e);
+				return null;
+			});
 
-		if (!res.ok) {
-			const text = await res.text();
-			messageHandler('error', `[HTTP ${res.status}] ${text}`);
-			return;
-		}
-
-		// Stream the response body and parse SSE-like chunks
-		const decoder = new TextDecoder();
-		reader = res.body.getReader();
-		let buffer = '';
-
-		while (true) {
-			if (reader === null) {
-				// Stream completed.
-				break;
+			if (!res) {
+				if (messageHandler) messageHandler('error', 'Fetch failed');
+				return resolve();
 			}
-			const { done, value } = await reader.read();
-			if (done) break;
-			buffer += decoder.decode(value, { stream: true });
 
-			// Process complete blocks separated by blank line(s)
-			let sepIndex;
-			while ((sepIndex = buffer.indexOf('\n\n')) !== -1 || (sepIndex = buffer.indexOf('\r\n\r\n')) !== -1) {
-				// prefer \r\n\r\n detect above, index found already
-				const block = buffer.slice(0, sepIndex);
-				buffer = buffer.slice(sepIndex + (buffer[sepIndex] === '\r' ? 4 : 2)); // remove separator
-				if (block.trim()) parseSSEBlock(block);
+			if (!res.ok) {
+				const text = await res.text();
+				if (messageHandler) messageHandler('error', `[HTTP ${res.status}] ${text}`);
+				return resolve();
+			}
+
+			// Stream the response body and parse SSE-like chunks
+			const decoder = new TextDecoder();
+			reader = res.body.getReader();
+			let buffer = '';
+
+			while (true) {
+				if (!reader) break;
+				const { done, value } = await reader.read();
+				if (done) break;
+				buffer += decoder.decode(value, { stream: true });
+
+				// Process complete blocks separated by blank line(s)
+				let sepIndex;
+				while ((sepIndex = buffer.indexOf('\n\n')) !== -1 || (sepIndex = buffer.indexOf('\r\n\r\n')) !== -1) {
+					// prefer \r\n\r\n detect above, index found already
+					const block = buffer.slice(0, sepIndex);
+					buffer = buffer.slice(sepIndex + (buffer[sepIndex] === '\r' ? 4 : 2)); // remove separator
+					if (block.trim()) parseSSEBlock(block);
+				}
+			}
+
+			// handle any trailing buffer
+			if (buffer.trim()) parseSSEBlock(buffer);
+
+			return resolve();
+		} catch (err) {
+			if (err && err.name === 'AbortError') {
+				if (messageHandler) messageHandler('close', 'Stream aborted by client.');
+				return resolve();
+			} else {
+				if (messageHandler) messageHandler('error', err && err.message ? err.message : String(err));
+				return resolve();
+			}
+		} finally {
+			// Cleanup reader
+			if (reader) {
+				try { await reader.cancel(); } catch (e) {}
+				reader = null;
+			}
+
+			// Do not abort the controller here unconditionally; leave it for callers to inspect if needed.
+
+			// Handle reconnect logic only if not aborted by client
+			if (reconnect && !abortedByClient) {
+				reconnectTimer = setTimeout(() => {
+					// call the stream again; the returned promise is intentionally not chained
+					try { stream(url, method, headers, body, messageHandler, reconnect); } catch (e) {}
+				}, 15000);
 			}
 		}
+	});
 
-
-		// handle any trailing buffer
-		if (buffer.trim()) parseSSEBlock(buffer);
-	} catch (err) {
-		if (err.name === 'AbortError') {
-			messageHandler('close', 'Stream aborted by client.');
-		} else {
-			messageHandler('error', err.message);
-		}
-	} finally {
+	// attach controller and cancel to the returned promise
+	p.controller = controller;
+	p.cancel = () => {
+		abortedByClient = true;
+		try { controller.abort(); } catch (e) {}
+		// cancel reader if active
 		if (reader) {
 			try { reader.cancel(); } catch (e) {}
 			reader = null;
 		}
-		if (controller) {
-			try { controller.abort(); } catch (e) {}
-			controller = null;
+		// clear any pending reconnect
+		if (reconnectTimer) {
+			try { clearTimeout(reconnectTimer); } catch (e) {}
+			reconnectTimer = null;
 		}
+	};
 
-		if (reconnect) {
-			// small delay before reconnecting
-			setTimeout(() => {
-				stream(url, method, headers, body, messageHandler, reconnect);
-			}, 15000);
-			return;
-		}
-	}
+	return p;
 }
-
 
 /**
  * Extract path parameters from a template string.

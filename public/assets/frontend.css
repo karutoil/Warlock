@@ -32,6 +32,7 @@
 	--terminal-error: #ff4c4c;
 	--terminal-bg: rgba(0, 0, 0, 1);
 	--terminal-border: rgba(0, 150, 255, 0.3);
+	--button-active-shadow: rgba(186, 186, 186, 0.4);
 	--button: #2b2b2b;
 	--button-bg-1: rgba(253, 253, 255, 1);
 	--button-bg-2: rgba(118, 139, 152, 1);
@@ -541,6 +542,11 @@ button.disabled, a.button.disabled {
 	transform: none;
 	box-shadow: none;
 }
+button.active, a.button.active {
+	transform: translateY(-2px) scale(1.05);
+	box-shadow: 0 4px 8px var(--button-active-shadow);
+}
+
 
 .button-group {
 	display: flex;
@@ -1622,18 +1628,13 @@ button.action-cancel:hover, a.button.action-cancel:hover {
 	text-shadow: 0 0 12px rgba(0, 150, 255, 0.6);
 }
 
-#logsContainer {
-	overflow-y: auto;
-	background: var(--content-bg);
-	border: 1px solid var(--content-border);
-	font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-	font-size: 0.9rem;
-	color: var(--content);
-	line-height: 1.5;
-	white-space: pre-wrap;
-	word-wrap: break-word;
-	box-shadow: 0 20px 60px var(--content-shadow);
-	height: calc(100vh - (4em + 210px));
+.logs-controls {
+	display: flex;
+	gap: 3rem;
+	margin-bottom: 0.5rem;
+}
+.logs-controls button {
+	white-space: nowrap;
 }
 
 /* ==========================
@@ -2085,8 +2086,3 @@ button.action-cancel:hover, a.button.action-cancel:hover {
 		min-width: 100px;
 	}
 }
-
-
-
-
-
