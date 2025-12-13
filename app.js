@@ -139,13 +139,11 @@ app.listen(PORT, '127.0.0.1', () => {
 
     // Ensure the sqlite database is up to date with the schema.
     sequelize.sync({ alter: true }).then(() => {
-        logger.info('Database synchronized');
+        logger.info(`Listening on ${PORT}`);
+
+        // Send a tracking snippet to our analytics server so we can monitor basic usage.
+        push_analytics('Start');
     }).catch(err => {
         logger.error('Database synchronization error:', err);
     });
-
-    logger.info(`Listening on ${PORT}`);
-
-    // Send a tracking snippet to our analytics server so we can monitor basic usage.
-    push_analytics('Start');
 });
