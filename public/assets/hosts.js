@@ -17,7 +17,7 @@ function renderHost(host, hostData) {
 	hostnameContainer.className = 'host-title';
 	const hostname = document.createElement('h4');
 	hostname.className = 'host-name';
-	hostname.innerHTML = `${renderHostIcon(host)} <span>${hostData.hostname || 'Unknown'}</span>`;
+	hostname.innerHTML = `${renderHostIcon(host)} <span>${hostData.hostname || host}</span>`;
 	hostnameContainer.appendChild(hostname);
 /*
 	// IP/
@@ -33,11 +33,13 @@ function renderHost(host, hostData) {
 
 	actions.className = 'host-actions';
 
-	firewallBtn.className = 'link-control action-edit';
-	firewallBtn.dataset.href = `/host/firewall/${encodeURIComponent(host)}`;
-	firewallBtn.title = 'Host Firewall';
-	firewallBtn.innerHTML = '<i class="fas fa-shield"></i>';
-	actions.appendChild(firewallBtn);
+	if (hostData.connected) {
+		firewallBtn.className = 'link-control action-edit';
+		firewallBtn.dataset.href = `/host/firewall/${encodeURIComponent(host)}`;
+		firewallBtn.title = 'Host Firewall';
+		firewallBtn.innerHTML = '<i class="fas fa-shield"></i>';
+		actions.appendChild(firewallBtn);
+	}
 
 	deleteBtn.className = 'link-control action-remove';
 	deleteBtn.dataset.href = `/host/delete/${encodeURIComponent(host)}`;

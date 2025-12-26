@@ -366,7 +366,17 @@ function renderHostOSThumbnail(host) {
 
 	const thumbnail = document.createElement('img');
 	thumbnail.className = 'os-thumbnail';
-	if (hostInfo.os.name && hostInfo.os.version) {
+
+	if (!hostInfo) {
+		// Default for if the host information could not be loaded.
+		thumbnail.src = '/assets/media/wallpapers/servers/generic.webp';
+		return thumbnail;
+	}
+
+	if (!hostInfo.connected) {
+		thumbnail.src = '/assets/media/wallpapers/servers/disconnected.webp';
+	}
+	else if (hostInfo.os.name && hostInfo.os.version) {
 		thumbnail.src = `/assets/media/wallpapers/servers/${hostInfo.os.name.toLowerCase()}_${hostInfo.os.version.toLowerCase()}.webp`;
 		thumbnail.dataset.fallback = '/assets/media/wallpapers/servers/generic.webp';
 		thumbnail.alt = hostInfo.os.name;

@@ -172,6 +172,8 @@ function noServicesAvailable() {
 		colSpan = table.querySelectorAll('th').length,
 		cell = document.createElement('td');
 
+	table.querySelector('tbody').innerHTML = ''; // Clear existing rows
+
 	row.className = 'service no-services-available';
 	table.querySelector('tbody').appendChild(row);
 
@@ -190,6 +192,9 @@ async function loadAllServicesAndStats() {
 			catch (error) {
 				console.error('Error parsing service stream data:', error, data);
 			}
+		}
+		else if (event === 'NOSERVICES') {
+			noServicesAvailable();
 		}
 		else {
 			console.warn('Service stream error:', data);

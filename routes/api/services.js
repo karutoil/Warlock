@@ -68,11 +68,18 @@ router.get('/stream', validate_session, (req, res) => {
 			req.on('aborted', onClientClose);
 			res.on('close', onClientClose);
 
+			let appCount = 0;
 			for (let guid in results) {
 				let app = results[guid];
 				for (let hostData of app.hosts) {
+					appCount += 1;
 					lookup(app, hostData);
 				}
+			}
+
+			if (appCount === 0) {
+				res.write(`event: NOSERVICES\ndata: ${JSON.stringify([])}\n\n`);
+				res.end();
 			}
 		});
 });
