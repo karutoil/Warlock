@@ -20,7 +20,8 @@ function buildOptionsForm(app_guid, host, service, options) {
 
 	options.forEach(option => {
 		let formGroup = document.createElement('div'),
-			id = `config-${option.option.toLowerCase().replace(' ', '-')}`;
+			name = option.option.toLowerCase().replace(/[^a-z]/g, '-').replace(/[-]+/g, '-').replace(/-$/, ''),
+			id = `config-${service ? 'service' : 'app'}-${name}`;
 		formGroup.className = 'form-group';
 
 		let label = document.createElement('label');
