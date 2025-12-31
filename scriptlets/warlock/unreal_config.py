@@ -225,7 +225,7 @@ class UnrealConfig(BaseConfig):
 							# Struct detected
 							struct_str = value[1:-1].strip()
 							struct_data = self._parse_struct(struct_str)
-							data = {'type': 'keystruct', 'key': key, 'value': struct_data}
+							data = {'type': 'keystruct', 'key': key, 'value': struct_data[0]}
 						else:
 							data = {'type': 'keyvalue', 'key': key, 'value': value}
 
@@ -263,43 +263,63 @@ class UnrealConfig(BaseConfig):
 					self._data.append(section)
 		self._is_changed = False
 
-	def _skip_escaping(self, s):
+	def _require_escaping(self, s):
 		"""
-		Simple check to see if a given value should have escaping skipped.
+		Simple check to see if a given value should require escaping.
 
 		:param s:
 		:return:
 		"""
-		if not isinstance(s, str):
-			# ints/floats do not require escaping
-			return isinstance(s, (int, float, bool))
 
-		if s == 'True' or s == 'False':
+		if isinstance(s, int):
+			# ints do not require escaping
+			return False
+		elif isinstance(s, float):
+			# floats do not require escaping
+			return False
+		elif isinstance(s, bool):
 			# Boolean values do not require escaping
-			return True
+			return False
+
+		# Strings that match basic numbers do not require quoting
+		if re.match(r'^[+-]?\d+(?:\.\d+)?$', s) is not None:
+			return False
 
 		if s == '':
 			# Empty values always require quoting
+			return True
+
+		if s == 'True' or s == 'False':
+			# Boolean strings do not require quoting
 			return False
 
-		# match integers and decimals (optional leading +/-)
-		return re.match(r'^[+-]?\d+(?:\.\d+)?$', s) is not None
+		if re.match(r'^[A-Za-z0-9]+$', s) is not None:
+			# Simple strings do not require quoting
+			return False
 
-	def _parse_struct(self, struct_str: str) -> dict:
+		# Default mode for strings is to escape them.
+		return True
+
+	def _parse_struct(self, struct_str: str) -> tuple[dict, int]:
 		"""
 		Parse a UE struct string into a dictionary
+
+		Returns a list with the dictionary and the number of characters parsed.
+
+		The dictionary is the parsed data and the characters parsed is suitable for jumping ahead in the parent string.
 
 		:param struct_str:
 		:return:
 		"""
 		result = {}
 		key = ''
-		sub_key = ''
 		buffer = ''
 		quote = None
-		group = None
-		vals = []
-		for c in struct_str:
+		in_key = False
+		counter = 0
+		while counter < len(struct_str):
+			c = struct_str[counter]
+			counter += 1
 			if c in ('"', "'") and quote is None:
 				# Quote start
 				quote = c
@@ -314,61 +334,60 @@ class UnrealConfig(BaseConfig):
 				continue
 
 			if c == '(':
-				group = c
-				continue
-			elif c == ')' and group is not None:
-				group = None
-				#if buffer != '':
-				if sub_key != '':
-					if isinstance(vals, list):
-						# This needs to be a dictionary in this case.
-						vals = {}
-					vals[sub_key] = buffer
-					sub_key = ''
-				else:
-					vals.append(buffer)
-
+				# Nested group start, recursively drop into it in a new parser.
+				sub_struct, jump = self._parse_struct(struct_str[counter:])
+				counter += jump
 				if key == '':
 					# This is a list of values, not a dictionary.
-					if isinstance(result, dict):
+					if isinstance(result, dict) and len(result) == 0:
 						result = []
-					result.append(vals)
-				else:
-					result[key] = vals
-				vals = []
-				buffer = ''
-				key = ''
-				continue
 
-			if c == '=' and buffer != '':
-				if group is not None:
-					# When inside a group, this indicates it's a dict.
-					sub_key = buffer
+					if isinstance(result, list):
+						result.append(sub_struct)
 				else:
-					key = buffer
+					result[key] = sub_struct
+
+				key = ''
+				in_key = False
+				continue
+			elif c == ')':
+				# End of group
+				if key == '' and buffer != '':
+					# This is a list of values, not a dictionary.
+					if isinstance(result, dict) and len(result) == 0:
+						result = []
+
+					if isinstance(result, list):
+						result.append(buffer)
+				elif in_key:
+					result[key] = buffer
+				# End of struct, this indicates the end of the current node we are scanning.
+				return result, counter
+			elif c == '=' and buffer != '':
+				key = buffer
 				buffer = ''
+				in_key = True
 			elif c == ',':
-				if sub_key != '':
-					if isinstance(vals, list):
-						# This needs to be a dictionary in this case.
-						vals = {}
-					vals[sub_key] = buffer
-					sub_key = ''
-				elif key != '':
-					if group is not None:
-						# Inside a group, usually a list
-						vals.append(buffer)
-					else:
-						result[key] = buffer
-						key = ''
+				if key == '' and buffer != '':
+					# This is a list of values, not a dictionary.
+					if isinstance(result, dict) and len(result) == 0:
+						result = []
+
+					if isinstance(result, list):
+						result.append(buffer)
+				elif in_key:
+					result[key] = buffer
+
+				in_key = False
+				key = ''
 				buffer = ''
 			else:
 				buffer += c
 		if key != '':
 			result[key] = buffer
-		return result
+		return result, counter
 
-	def _pack_struct(self, struct_data: dict) -> str:
+	def _pack_struct(self, struct_data: Union[dict, list]) -> str:
 		"""
 		Pack a dictionary into a UE struct string
 
@@ -381,24 +400,27 @@ class UnrealConfig(BaseConfig):
 			for value in struct_data:
 				if isinstance(value, dict):
 					val_str = self._pack_struct(value)
-				elif value == '' or ':' in value or ',' in value:
-					# Needs quoting
+				elif self._require_escaping(value):
+					# This string requires quoting
 					val_str = '"%s"' % value.replace('"', '\\"')
 				else:
-					val_str = value
+					# Default for structs is no quoted values.
+					val_str = str(value)
 				parts.append(val_str)
 			return '(' + ','.join(parts) + ')'
 		else:
 			for key in struct_data:
 				value = struct_data[key]
 				if isinstance(value, list):
-					val_str = '(' + ','.join(value) + ')'
-				elif self._skip_escaping(value):
-					# No quoting required
-					val_str = str(value)
-				else:
-					# Default for structs is to quote values.
+					val_str = self._pack_struct(value)
+				elif isinstance(value, dict):
+					val_str = self._pack_struct(value)
+				elif self._require_escaping(value):
+					# This string requires quoting
 					val_str = '"%s"' % value.replace('"', '\\"')
+				else:
+					# Default for structs is no quoted values.
+					val_str = str(value)
 				parts.append('%s=%s' % (key, val_str))
 			return '(' + ','.join(parts) + ')'
 
