@@ -132,6 +132,7 @@ app.use('/api/cron', require('./routes/api/cron'));
 app.use('/api/users', require('./routes/api/users'));
 app.use('/api/firewall', require('./routes/api/firewall'));
 app.use('/api/ports', require('./routes/api/ports'));
+app.use('/api/metrics', require('./routes/api/metrics'));
 
 
 // Start the server

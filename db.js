@@ -55,6 +55,40 @@ const Meta = sequelize.define('Meta', {
 	}
 });
 
+// Metrics model for storing time-series service metrics
+const Metric = sequelize.define('Metric', {
+	ip: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	metric_title: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	app_guid: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	service: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	metric_value: {
+		type: DataTypes.FLOAT,
+		allowNull: false
+	},
+	timestamp: {
+		type: DataTypes.INTEGER,
+		allowNull: false
+	}
+}, {
+	indexes: [
+		{ fields: ['ip', 'service', 'timestamp'] },
+		{ fields: ['app_guid', 'service', 'timestamp'] }
+	],
+	timestamps: false
+});
+
 // Sync database - alter: true will update schema without dropping data
 sequelize.sync({ alter: true }).then(() => {
 	console.log('Database synced successfully');
@@ -66,5 +100,6 @@ module.exports = {
 	sequelize,
 	User,
 	Host,
-	Meta
+	Meta,
+	Metric
 };

@@ -8,6 +8,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/frontend.css">
     <link rel="stylesheet" href="/assets/themes.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="/assets/common.js"></script>
 </head>
 <body>
@@ -150,6 +152,54 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Metrics Modal -->
+    <div id="metricsModal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 90%; max-height: 90vh; width: 1400px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-chart-line"></i> Service Metrics</h3>
+                <button class="modal-close" onclick="closeMetricsModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="metricsTimeframeSelector" style="margin-bottom: 20px; text-align: center;">
+                    <button class="timeframe-btn" data-timeframe="hour">Hour</button>
+                    <button class="timeframe-btn active" data-timeframe="today">Today</button>
+                    <button class="timeframe-btn" data-timeframe="week">Week</button>
+                    <button class="timeframe-btn" data-timeframe="month">Month</button>
+                    <button class="timeframe-btn" data-timeframe="3month">3 Months</button>
+                    <button class="timeframe-btn" data-timeframe="6month">6 Months</button>
+                    <button class="timeframe-btn" data-timeframe="year">Year</button>
+                    <button class="fullscreen-btn" onclick="toggleFullscreen()">
+                        <i class="fas fa-expand"></i> Fullscreen
+                    </button>
+                </div>
+                <div id="metricsCharts" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="chart-container">
+                        <h4>CPU Usage (%)</h4>
+                        <div><canvas id="cpuChart"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h4>Memory Usage (MB)</h4>
+                        <div><canvas id="memoryChart"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h4>Player Count</h4>
+                        <div><canvas id="playersChart"></canvas></div>
+                    </div>
+                    <div class="chart-container">
+                        <h4>Server Status</h4>
+                        <div><canvas id="statusChart"></canvas></div>
+                    </div>
+                    <div class="chart-container" style="grid-column: 1 / -1;">
+                        <h4>Response Time (ms)</h4>
+                        <div><canvas id="responseTimeChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
 	<%- include('partials/theme-selector.ejs') %>

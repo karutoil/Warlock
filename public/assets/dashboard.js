@@ -32,6 +32,11 @@ function populateServicesTable(servicesWithStats) {
 	<i class="fas fa-cog"></i> Config
 </button>`);
 
+		actionButtons.push(`
+<button title="View Metrics" data-host="${host.host}" data-service="${service.service}" data-guid="${app_guid}" class="action-metrics">
+	<i class="fas fa-chart-line"></i> Graph
+</button>`);
+
 		if (service.status === 'running') {
 			statusIcon = '<i class="fas fa-check-circle"></i>';
 			actionButtons.push(`
@@ -94,6 +99,19 @@ function populateServicesTable(servicesWithStats) {
 
 				row.appendChild(cell);
 			});
+			
+			// Add mobile actions row only on mobile screens
+			if (window.innerWidth <= 900) {
+				const actionsRow = document.createElement('tr');
+				actionsRow.className = 'service-actions';
+				actionsRow.setAttribute('data-host', host.host);
+				actionsRow.setAttribute('data-service', service.service);
+				const actionsCell = document.createElement('td');
+				actionsCell.colSpan = fields.length;
+				actionsCell.innerHTML = '<div class="mobile-actions"></div>';
+				actionsRow.appendChild(actionsCell);
+				row.after(actionsRow);
+			}
 		}
 
 		row.dataset.updated = String(now); // Mark as found
@@ -149,6 +167,17 @@ function populateServicesTable(servicesWithStats) {
 			}
 			else if (field === 'actions') {
 				val = actionButtons.join(' ');
+				
+				// Also update mobile actions row if on mobile
+				if (window.innerWidth <= 900) {
+					const actionsRow = row.nextElementSibling;
+					if (actionsRow && actionsRow.classList.contains('service-actions')) {
+						const mobileActions = actionsRow.querySelector('.mobile-actions');
+						if (mobileActions) {
+							mobileActions.innerHTML = actionButtons.join(' ');
+						}
+					}
+				}
 			}
 			else if (field === 'icon') {
 				val = appIcon;
@@ -411,6 +440,16 @@ window.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('click', e => {
 	if (e.target) {
 
+		// Mobile: Toggle service actions row
+		if (window.innerWidth <= 900 && window.innerWidth > 445) {
+			const serviceRow = e.target.closest('tr.service:not(.service-actions)');
+			if (serviceRow && !e.target.closest('button')) {
+				e.preventDefault();
+				serviceRow.classList.toggle('expanded');
+				return;
+			}
+		}
+
 		if (e.target.classList.contains('service-control') || e.target.closest('.service-control')) {
 			let btn = e.target.classList.contains('service-control') ? e.target : e.target.closest('.service-control'),
 				service = btn.dataset.service,
@@ -439,6 +478,307 @@ document.addEventListener('click', e => {
 
 			window.location.href = href;
 		}
+		else if (e.target.classList.contains('action-metrics') || e.target.closest('.action-metrics')) {
+			let btn = e.target.classList.contains('action-metrics') ? e.target : e.target.closest('.action-metrics'),
+				service = btn.dataset.service,
+				host = btn.dataset.host,
+				guid = btn.dataset.guid;
+
+			e.preventDefault();
+			openMetricsModal(host, service, guid);
+		}
 	}
 
+});
+
+// Metrics Modal Functionality
+let metricsCharts = {};
+let currentMetricsData = {host: null, service: null, guid: null};
+let metricsRefreshInterval = null;
+
+function openMetricsModal(host, service, guid) {
+	currentMetricsData = {host, service, guid};
+	document.getElementById('metricsModal').style.display = 'flex';
+	loadMetrics('today');
+	
+	// Set up auto-refresh every 65 seconds
+	if (metricsRefreshInterval) {
+		clearInterval(metricsRefreshInterval);
+	}
+	metricsRefreshInterval = setInterval(() => {
+		const activeTimeframe = document.querySelector('.timeframe-btn.active')?.dataset.timeframe || 'today';
+		loadMetrics(activeTimeframe);
+	}, 65000);
+}
+
+function closeMetricsModal() {
+	document.getElementById('metricsModal').style.display = 'none';
+	
+	// Clear refresh interval
+	if (metricsRefreshInterval) {
+		clearInterval(metricsRefreshInterval);
+		metricsRefreshInterval = null;
+	}
+	
+	// Destroy existing charts
+	Object.values(metricsCharts).forEach(chart => {
+		if (chart) chart.destroy();
+	});
+	metricsCharts = {};
+}
+
+async function loadMetrics(timeframe) {
+	const {host, service, guid} = currentMetricsData;
+	
+	try {
+		const response = await fetch(`/api/metrics/${host}/${service}?timeframe=${timeframe}`);
+		const result = await response.json();
+		
+		if (!result.success) {
+			console.error('Error loading metrics:', result.error);
+			return;
+		}
+		
+		renderCharts(result.data, timeframe);
+	} catch (error) {
+		console.error('Error fetching metrics:', error);
+	}
+}
+
+function renderCharts(metrics, timeframe) {
+	// Group metrics by type
+	const groupedMetrics = {
+		cpu: [],
+		memory: [],
+		players: [],
+		status: [],
+		response_time: []
+	};
+	
+	metrics.forEach(metric => {
+		if (groupedMetrics[metric.metric_title]) {
+			groupedMetrics[metric.metric_title].push({
+				timestamp: metric.timestamp * 1000, // Convert to milliseconds
+				value: metric.metric_value
+			});
+		}
+	});
+	
+	// Destroy existing charts
+	Object.values(metricsCharts).forEach(chart => {
+		if (chart) chart.destroy();
+	});
+	
+	// Common chart options
+	const commonOptions = {
+		responsive: true,
+		maintainAspectRatio: false,
+		plugins: {
+			legend: {
+				display: false
+			},
+			tooltip: {
+				backgroundColor: 'rgba(0, 0, 0, 0.8)',
+				titleColor: '#fff',
+				bodyColor: '#fff',
+				borderColor: '#0096ff',
+				borderWidth: 1
+			}
+		},
+		scales: {
+			x: {
+				type: 'time',
+				time: {
+					unit: getTimeUnit(timeframe)
+				},
+				grid: {
+					color: 'rgba(255, 255, 255, 0.1)'
+				},
+				ticks: {
+					color: '#fff',
+					font: {
+						size: 11
+					}
+				},
+				title: {
+					color: '#fff'
+				}
+			},
+			y: {
+				grid: {
+					color: 'rgba(255, 255, 255, 0.1)'
+				},
+				ticks: {
+					color: '#fff',
+					font: {
+						size: 11
+					}
+				},
+				title: {
+					color: '#fff'
+				}
+			}
+		}
+	};
+	
+	// CPU Chart
+	metricsCharts.cpu = new Chart(document.getElementById('cpuChart'), {
+		type: 'line',
+		data: {
+			datasets: [{
+				label: 'CPU %',
+				data: groupedMetrics.cpu.map(m => ({x: m.timestamp, y: m.value})),
+				borderColor: '#0096ff',
+				backgroundColor: 'rgba(0, 150, 255, 0.1)',
+				fill: true,
+				tension: 0.4
+			}]
+		},
+		options: commonOptions
+	});
+	
+	// Memory Chart
+	metricsCharts.memory = new Chart(document.getElementById('memoryChart'), {
+		type: 'line',
+		data: {
+			datasets: [{
+				label: 'Memory MB',
+				data: groupedMetrics.memory.map(m => ({x: m.timestamp, y: m.value})),
+				borderColor: '#00d4aa',
+				backgroundColor: 'rgba(0, 212, 170, 0.1)',
+				fill: true,
+				tension: 0.4
+			}]
+		},
+		options: commonOptions
+	});
+	
+	// Players Chart
+	metricsCharts.players = new Chart(document.getElementById('playersChart'), {
+		type: 'line',
+		data: {
+			datasets: [{
+				label: 'Players',
+				data: groupedMetrics.players.map(m => ({x: m.timestamp, y: m.value})),
+				borderColor: '#ff6b6b',
+				backgroundColor: 'rgba(255, 107, 107, 0.1)',
+				fill: true,
+				tension: 0.4,
+				stepped: true
+			}]
+		},
+		options: {
+			...commonOptions,
+			scales: {
+				...commonOptions.scales,
+				y: {
+					...commonOptions.scales.y,
+					ticks: {
+						...commonOptions.scales.y.ticks,
+						stepSize: 1
+					}
+				}
+			}
+		}
+	});
+	
+	// Status Chart (1 = running, 0 = stopped)
+	metricsCharts.status = new Chart(document.getElementById('statusChart'), {
+		type: 'line',
+		data: {
+			datasets: [{
+				label: 'Status',
+				data: groupedMetrics.status.map(m => ({x: m.timestamp, y: m.value})),
+				borderColor: '#ffd93d',
+				backgroundColor: 'rgba(255, 217, 61, 0.1)',
+				fill: true,
+				stepped: true
+			}]
+		},
+		options: {
+			...commonOptions,
+			scales: {
+				...commonOptions.scales,
+				y: {
+					...commonOptions.scales.y,
+					min: 0,
+					max: 1,
+					ticks: {
+						...commonOptions.scales.y.ticks,
+						stepSize: 1,
+						callback: function(value) {
+							return value === 1 ? 'Running' : 'Stopped';
+						}
+					}
+				}
+			}
+		}
+	});
+	
+	// Response Time Chart
+	metricsCharts.responseTime = new Chart(document.getElementById('responseTimeChart'), {
+		type: 'line',
+		data: {
+			datasets: [{
+				label: 'Response Time (ms)',
+				data: groupedMetrics.response_time.map(m => ({x: m.timestamp, y: m.value})),
+				borderColor: '#c44569',
+				backgroundColor: 'rgba(196, 69, 105, 0.1)',
+				fill: true,
+				tension: 0.4
+			}]
+		},
+		options: commonOptions
+	});
+}
+
+function getTimeUnit(timeframe) {
+	switch(timeframe) {
+		case 'hour':
+			return 'minute';
+		case 'today':
+		case 'week':
+			return 'hour';
+		case 'month':
+		case '3month':
+			return 'day';
+		case '6month':
+		case 'year':
+			return 'week';
+		default:
+			return 'hour';
+	}
+}
+
+function toggleFullscreen() {
+	const modalContent = document.querySelector('#metricsModal .modal-content');
+	const btn = document.querySelector('#metricsModal .fullscreen-btn i');
+	
+	if (!document.fullscreenElement) {
+		modalContent.requestFullscreen().catch(err => {
+			console.error('Error attempting to enable fullscreen:', err);
+		});
+		btn.className = 'fas fa-compress';
+	} else {
+		document.exitFullscreen();
+		btn.className = 'fas fa-expand';
+	}
+}
+
+// Timeframe selector event listeners
+document.addEventListener('DOMContentLoaded', () => {
+	document.querySelectorAll('.timeframe-btn').forEach(btn => {
+		btn.addEventListener('click', () => {
+			document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+			btn.classList.add('active');
+			loadMetrics(btn.dataset.timeframe);
+		});
+	});
+	
+	// Close modal on overlay click
+	document.getElementById('metricsModal').addEventListener('click', (e) => {
+		if (e.target.id === 'metricsModal') {
+			closeMetricsModal();
+		}
+	});
 });
