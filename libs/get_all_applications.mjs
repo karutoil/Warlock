@@ -79,8 +79,8 @@ export async function getAllApplications() {
 						}
 					});
 
-					// Cache the applications for 1 hour
-					cache.set('all_applications', applications, 3600);
+					// Cache the applications for 1 day
+					cache.set('all_applications', applications, 86400);
 					logger.debug('getAllApplications: Application Definitions Loaded', applications);
 					return resolve(applications);
 				});

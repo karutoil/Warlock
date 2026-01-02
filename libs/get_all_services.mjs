@@ -1,6 +1,6 @@
 import {getAllApplications} from "./get_all_applications.mjs";
 import {logger} from "./logger.mjs";
-import {getServicesStatus} from "./get_services_status.mjs";
+import {getApplicationServices} from "./get_application_services.mjs";
 
 /**
  * Get all services from all applications across all hosts
@@ -17,7 +17,7 @@ export async function getAllServices() {
 				for (let guid in results) {
 					let app = results[guid];
 					for (let hostData of app.hosts) {
-						allLookups.push(getServicesStatus(app, hostData));
+						allLookups.push(getApplicationServices(app, hostData));
 					}
 				}
 
@@ -36,6 +36,6 @@ export async function getAllServices() {
 
 						resolve(services);
 					});
-			})
+			});
 	});
 }

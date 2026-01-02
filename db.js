@@ -89,13 +89,6 @@ const Metric = sequelize.define('Metric', {
 	timestamps: false
 });
 
-// Sync database - alter: true will update schema without dropping data
-sequelize.sync({ alter: true }).then(() => {
-	console.log('Database synced successfully');
-}).catch(err => {
-	console.error('Error syncing database:', err);
-});
-
 module.exports = {
 	sequelize,
 	User,

@@ -1,190 +1,196 @@
 const servicesContainer = document.getElementById('servicesContainer');
 
+// Metrics Modal Functionality
+let metricsCharts = {};
+let currentMetricsData = {host: null, service: null, guid: null};
+let metricsRefreshInterval = null;
+
+// List of services which are being watched live; these should have the lazy lookups ignored.
+let liveServices = [];
+
 /**
  *
- * @param servicesWithStats {app: AppData, host: HostAppData, service: ServiceData}
+ * @param servicesWithStats {app: {string}, host: HostAppData, service: ServiceData}
  */
 function populateServicesTable(servicesWithStats) {
 	const table = document.getElementById('services-table'),
 		now = parseInt(Date.now() / 1000),
 		threshold = now - 45, // 45 seconds ago
-		app_guid = servicesWithStats.app.guid,
-		host = servicesWithStats.host;
+		app_guid = servicesWithStats.app,
+		host = servicesWithStats.host,
+		service = servicesWithStats.service;
 
-	Object.values(servicesWithStats.services).forEach(service => {
-		let row = table.querySelector('tr.service[data-host="' + host.host + '"][data-service="' + service.service + '"]'),
-			fields = ['host', 'icon', 'name', 'enabled', 'status', 'port', 'players', 'memory', 'cpu', 'age', 'actions'],
-			statusIcon = '',
-			actionButtons = [],
-			enabledField = '',
-			appIcon = renderAppIcon(app_guid);
+	let row = table.querySelector('tr.service[data-host="' + host.host + '"][data-service="' + service.service + '"]'),
+		fields = ['host', 'icon', 'name', 'enabled', 'status', 'port', 'players', 'memory', 'cpu', 'actions'],
+		statusIcon = '',
+		actionButtons = [],
+		enabledField = '',
+		appIcon = renderAppIcon(app_guid);
 
-		if (service.pre_exec || service.start_exec) {
-			// Service has run in the past, so it should have log files available!
-			actionButtons.push(`
+	actionButtons.push(`
 <button title="View Logs" data-href="/service/logs/${app_guid}/${host.host}/${service.service}" class="link-control action-logs">
-	<i class="fas fa-align-justify"></i> Logs
+<i class="fas fa-align-justify"></i><span>Logs</span>
 </button>`);
-		}
 
-		actionButtons.push(`
+	actionButtons.push(`
 <button title="Configure Game" data-href="/service/configure/${app_guid}/${host.host}/${service.service}" class="link-control action-configure">
-	<i class="fas fa-cog"></i> Config
+<i class="fas fa-cog"></i><span>Config</span>
 </button>`);
 
-		actionButtons.push(`
+	actionButtons.push(`
 <button title="View Metrics" data-host="${host.host}" data-service="${service.service}" data-guid="${app_guid}" class="action-metrics">
-	<i class="fas fa-chart-line"></i> Graph
+<i class="fas fa-chart-line"></i><span>Charts</span>
 </button>`);
 
-		if (service.status === 'running') {
-			statusIcon = '<i class="fas fa-check-circle"></i>';
-			actionButtons.push(`
+	if (service.status === 'running') {
+		statusIcon = '<i class="fas fa-check-circle"></i>';
+		actionButtons.push(`
 <button title="Stop Game" data-host="${host.host}" data-service="${service.service}" data-action="stop" data-guid="${app_guid}" class="service-control action-stop">
-	<i class="fas fa-stop"></i> Stop
+<i class="fas fa-stop"></i><span>Stop</span>
 </button>`);
-		}
-		else if (service.status === 'stopped') {
-			statusIcon = '<i class="fas fa-times-circle"></i>';
-			actionButtons.push(`
+	}
+	else if (service.status === 'stopped') {
+		statusIcon = '<i class="fas fa-times-circle"></i>';
+		actionButtons.push(`
 <button title="Start Game" data-host="${host.host}" data-service="${service.service}" data-action="start" data-guid="${app_guid}" class="service-control action-start">
-	<i class="fas fa-play"></i> Start
+<i class="fas fa-play"></i><span>Start</span>
 </button>`);
-		}
-		else if (service.status === 'starting') {
-			statusIcon = '<i class="fas fa-sync-alt fa-spin"></i>';
-			actionButtons.push(`
+	}
+	else if (service.status === 'starting') {
+		statusIcon = '<i class="fas fa-sync-alt fa-spin"></i>';
+		actionButtons.push(`
 <button title="Stop Game" data-host="${host.host}" data-service="${service.service}" data-action="stop" data-guid="${app_guid}" class="service-control action-stop">
-	<i class="fas fa-stop"></i> Stop
+<i class="fas fa-stop"></i><span>Stop</span>
 </button>`);
-		}
-		else if (service.status === 'stopping') {
-			statusIcon = '<i class="fas fa-sync-alt fa-spin"></i>';
-		}
-		else {
-			statusIcon = '<i class="fas fa-question-circle"></i>';
-		}
+	}
+	else if (service.status === 'stopping') {
+		statusIcon = '<i class="fas fa-sync-alt fa-spin"></i>';
+	}
+	else {
+		statusIcon = '<i class="fas fa-question-circle"></i>';
+	}
 
-		if (service.enabled) {
-			enabledField = `
+	if (service.enabled) {
+		enabledField = `
 <button title="Enabled at Boot, click to disable" data-host="${host.host}" data-service="${service.service}" data-action="disable" data-guid="${app_guid}" class="service-control action-start">
-				<i class="fas fa-check-circle"></i>
-			</button>`;
-		} else {
-			enabledField = `
+			<i class="fas fa-check-circle"></i>
+		</button>`;
+	} else {
+		enabledField = `
 <button title="Disabled at Boot, click to enable" data-host="${host.host}" data-service="${service.service}" data-action="enable" data-guid="${app_guid}" class="service-control action-stop">
-				<i class="fas fa-times-circle"></i>
-			</button>`;
-		}
+			<i class="fas fa-times-circle"></i>
+		</button>`;
+	}
 
-		if (!row) {
-			// Create new row
-			row = document.createElement('tr');
-			row.className = 'service';
-			row.setAttribute('data-host', host.host);
-			row.setAttribute('data-service', service.service);
-			table.querySelector('tbody').appendChild(row);
+	if (!row) {
+		// Create new row
+		row = document.createElement('tr');
+		row.className = 'service';
+		row.setAttribute('data-host', host.host);
+		row.setAttribute('data-service', service.service);
+		table.querySelector('tbody').appendChild(row);
 
-			// Initialize empty cells
-			fields.forEach(field => {
-				const cell = document.createElement('td');
-				cell.className = field;
-
-				if (field === 'age') {
-					cell.title = 'Data Last Updated';
-				}
-				else if (field === 'cpu') {
-					cell.title = 'Percentage of a single thread process (100% being 1 full thread usage)';
-				}
-
-				row.appendChild(cell);
-			});
-			
-			// Add mobile actions row only on mobile screens
-			if (window.innerWidth <= 900) {
-				const actionsRow = document.createElement('tr');
-				actionsRow.className = 'service-actions';
-				actionsRow.setAttribute('data-host', host.host);
-				actionsRow.setAttribute('data-service', service.service);
-				const actionsCell = document.createElement('td');
-				actionsCell.colSpan = fields.length;
-				actionsCell.innerHTML = '<div class="mobile-actions"></div>';
-				actionsRow.appendChild(actionsCell);
-				row.after(actionsRow);
-			}
-		}
-
-		row.dataset.updated = String(now); // Mark as found
-		row.classList.remove('updating');
-
+		// Initialize empty cells
 		fields.forEach(field => {
-			const cell = row.querySelector('td.' + field);
-			let val = service[field] || '';
+			const cell = document.createElement('td');
+			cell.className = field;
 
-			if (field === 'host') {
-				val = renderHostName(host.host);
+			if (field === 'age') {
+				cell.title = 'Data Last Updated';
 			}
-			else if (field === 'age') {
-				val = 'NOW';
-				cell.classList.add('status-fresh');
-				cell.classList.remove('status-idle');
-				cell.classList.remove('status-disconnected');
+			else if (field === 'cpu') {
+				cell.title = 'Percentage of a single thread process (100% being 1 full thread usage)';
 			}
-			else if (field === 'status') {
-				// Check if this service has an exec/pre-exec error
-				let error = false;
-				if (service.pre_exec && service.pre_exec.status !== null && service.pre_exec.status !== 0) {
+
+			row.appendChild(cell);
+		});
+
+		// Add mobile actions row only on mobile screens
+		if (window.innerWidth <= 900) {
+			const actionsRow = document.createElement('tr');
+			actionsRow.className = 'service-actions';
+			actionsRow.setAttribute('data-host', host.host);
+			actionsRow.setAttribute('data-service', service.service);
+			const actionsCell = document.createElement('td');
+			actionsCell.colSpan = fields.length;
+			actionsCell.innerHTML = '<div class="mobile-actions"></div>';
+			actionsRow.appendChild(actionsCell);
+			row.after(actionsRow);
+		}
+	}
+
+	row.dataset.updated = String(now); // Mark as found
+	row.classList.remove('updating');
+
+	fields.forEach(field => {
+		const cell = row.querySelector('td.' + field);
+		let val = service[field] || '';
+
+		if (field === 'host') {
+			val = renderHostName(host.host);
+		}
+		else if (field === 'response_time') {
+			if (val > 1000) {
+				val = (val / 1000).toFixed(2) + ' s';
+			}
+			else {
+				val = val + ' ms';
+			}
+		}
+		else if (field === 'status') {
+			// Check if this service has an exec/pre-exec error
+			let error = false;
+			if (service.pre_exec && service.pre_exec.status !== null && service.pre_exec.status !== 0) {
+				error = true;
+			}
+
+			if (service.start_exec && service.start_exec.status !== null) {
+				if (service.start_exec.status !== 0 && service.start_exec.status !== 15) {
 					error = true;
 				}
+			}
 
-				if (service.start_exec && service.start_exec.status !== null) {
-					if (service.start_exec.status !== 0 && service.start_exec.status !== 15) {
-						error = true;
-					}
-				}
+			if (error) {
+				val = statusIcon + ' ' + 'ERROR';
+				cell.className = field + ' status-error';
+			}
+			else {
+				val = statusIcon + ' ' + service[field].toUpperCase();
+				cell.className = field + ' status-' + service[field];
+			}
+		}
+		else if (field === 'enabled') {
+			val = enabledField;
+		}
+		else if (field === 'players') {
+			val = service.player_count || 0;
+			if (service.max_players) {
+				val += ' / ' + service.max_players;
+			}
+		} else if (field === 'memory') {
+			val = service.memory_usage || '-';
+		} else if (field === 'cpu') {
+			val = service.cpu_usage || '-';
+		}
+		else if (field === 'actions') {
+			val = '<div class="button-group">' + actionButtons.join(' ') + '</div>';
 
-				if (error) {
-					val = statusIcon + ' ' + 'ERROR';
-					cell.className = field + ' status-error';
-				}
-				else {
-					val = statusIcon + ' ' + service[field].toUpperCase();
-					cell.className = field + ' status-' + service[field];
-				}
-			}
-			else if (field === 'enabled') {
-				val = enabledField;
-			}
-			else if (field === 'players') {
-				val = service.player_count || 0;
-				if (service.max_players) {
-					val += ' / ' + service.max_players;
-				}
-			} else if (field === 'memory') {
-				val = service.memory_usage || '-';
-			} else if (field === 'cpu') {
-				val = service.cpu_usage || '-';
-			}
-			else if (field === 'actions') {
-				val = actionButtons.join(' ');
-				
-				// Also update mobile actions row if on mobile
-				if (window.innerWidth <= 900) {
-					const actionsRow = row.nextElementSibling;
-					if (actionsRow && actionsRow.classList.contains('service-actions')) {
-						const mobileActions = actionsRow.querySelector('.mobile-actions');
-						if (mobileActions) {
-							mobileActions.innerHTML = actionButtons.join(' ');
-						}
+			// Also update mobile actions row if on mobile
+			if (window.innerWidth <= 900) {
+				const actionsRow = row.nextElementSibling;
+				if (actionsRow && actionsRow.classList.contains('service-actions')) {
+					const mobileActions = actionsRow.querySelector('.mobile-actions');
+					if (mobileActions) {
+						mobileActions.innerHTML = actionButtons.join(' ');
 					}
 				}
 			}
-			else if (field === 'icon') {
-				val = appIcon;
-			}
+		}
+		else if (field === 'icon') {
+			val = appIcon;
+		}
 
-			cell.innerHTML = val;
-		});
+		cell.innerHTML = val;
 	});
 
 	// Services have been loaded, (at least one), remove "no services" and "services loading" messages
@@ -212,26 +218,88 @@ function noServicesAvailable() {
 	row.appendChild(cell);
 }
 
-async function loadAllServicesAndStats() {
-	stream('/api/services/stream', 'GET',{},null,(event, data) => {
+/**
+ * Load all services and their stats
+ */
+function loadAllServicesAndStats() {
+	fetch('/api/services', {method: 'GET'})
+		.then(r => r.json())
+		.then(results => {
+			if (results.success && results.services.length > 0) {
+				results.services.forEach(s => {
+					if (liveServices.includes(s.app + '|' + s.host.host + '|' + s.service.service)) {
+						return;
+					}
+					populateServicesTable(s);
+				});
+			}
+			else {
+				console.error('Error loading services.', results);
+				noServicesAvailable();
+			}
+		});
+}
+
+/**
+ * Stream service stats for a given application, host, and service
+ *
+ * Will ping the host much more frequently to provide more real-time updates to the user.
+ *
+ * Operation automatically stops once the target service state has been reached.
+ *
+ * @param {string} app_guid
+ * @param {string} host
+ * @param {string} service
+ * @param {string} target_state
+ */
+function streamServiceStats(app_guid, host, service, target_state) {
+	// What's the target state for this service to stop streaming?
+	let targetKey, targetValue;
+
+	if (target_state === 'start') {
+		targetKey = 'status';
+		targetValue = 'running';
+	}
+	else if (target_state === 'stop') {
+		targetKey = 'status';
+		targetValue = 'stopped';
+	}
+	else if (target_state === 'enable') {
+		targetKey = 'enabled';
+		targetValue = true;
+	}
+	else if (target_state === 'disable') {
+		targetKey = 'enabled';
+		targetValue = false;
+	}
+	else {
+		console.error('Invalid target state for streaming service stats:', target_state);
+	}
+
+	// Skip this service from lazy updates
+	liveServices.push(app_guid + '|' + host + '|' + service);
+
+	let res = stream(`/api/service/stream/${app_guid}/${host}/${service}`, 'GET',{},null,(event, data) => {
 		if (event === 'message') {
 			try {
 				let parsed = JSON.parse(data);
 				populateServicesTable(parsed);
+
+				// Has the target state been reached?
+				if (parsed.service[targetKey] === targetValue) {
+					// Remove from live services
+					liveServices = liveServices.filter(s => s !== (app_guid + '|' + host + '|' + service));
+					return false;
+				}
 			}
 			catch (error) {
 				console.error('Error parsing service stream data:', error, data);
 			}
 		}
-		else if (event === 'NOSERVICES') {
-			noServicesAvailable();
-		}
 		else {
 			console.warn('Service stream error:', data);
 		}
-	}, true).catch(e => {
-		console.error(e);
-	});
+	}, true);
 }
 
 /**
@@ -363,79 +431,6 @@ function checkForUpdates() {
 	});
 }
 
-
-// Load on page load
-window.addEventListener('DOMContentLoaded', () => {
-	fetchHosts().then(hosts => {
-		if (Object.values(hosts).length === 0) {
-			displayNoHosts();
-			return;
-		}
-		fetchApplications().then(applications => {
-			// Display applications
-			displayApplications(applications);
-
-			loadAllServicesAndStats();
-
-			// Refresh timer every second
-			setInterval(() => {
-				const table = document.getElementById('services-table'),
-					rows = table.querySelectorAll('tr.service'),
-					now = parseInt(Date.now() / 1000);
-
-				rows.forEach(row => {
-					const updated = parseInt(row.dataset.updated),
-						age = now - updated,
-						ageCell = row.querySelector('td.age');
-
-					if (updated > 0 && ageCell) {
-						ageCell.innerText = age < 2 ? 'NOW' : age + 's';
-
-						if (age > 60) {
-							// Remove this row entirely after 60 seconds of no updates
-							row.remove();
-						}
-						else if (age >= 40) {
-							ageCell.classList.remove('status-fresh');
-							ageCell.classList.remove('status-idle');
-							ageCell.classList.add('status-disconnected');
-						}
-						else if (age >= 30) {
-							ageCell.classList.remove('status-fresh');
-							ageCell.classList.add('status-idle');
-							ageCell.classList.remove('status-disconnected');
-						}
-						else if (age <= 5) {
-							ageCell.classList.add('status-fresh');
-							ageCell.classList.remove('status-idle');
-							ageCell.classList.remove('status-disconnected');
-						}
-						else {
-							ageCell.classList.remove('status-fresh');
-							ageCell.classList.remove('status-idle');
-							ageCell.classList.remove('status-disconnected');
-						}
-					}
-				});
-
-				// Are there no records?
-				if (table.querySelectorAll('tr.service').length === 0) {
-					noServicesAvailable();
-				}
-			}, 1000);
-
-			setTimeout(checkForUpdates, 10*1000); // Check for updates after 10 seconds
-			setInterval(checkForUpdates, 60*15*1000); // Check for updates every 15 minutes
-		}).catch(error => {
-			document.getElementById('applicationsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
-			console.error('Error fetching applications:', error);
-		});
-	}).catch(error => {
-		document.getElementById('applicationsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
-		console.error('Error fetching hosts:', error);
-	});
-});
-
 // Dynamic events for various buttons
 document.addEventListener('click', e => {
 	if (e.target) {
@@ -468,7 +463,9 @@ document.addEventListener('click', e => {
 				btn.closest('tr').classList.add('updating');
 			}
 
-			serviceAction(guid, host, service, action);
+			serviceAction(guid, host, service, action).then(() => {
+				streamServiceStats(guid, host, service, action);
+			});
 		}
 		else if (e.target.classList.contains('link-control') || e.target.closest('.link-control')) {
 			let btn = e.target.classList.contains('link-control') ? e.target : e.target.closest('.link-control'),
@@ -491,16 +488,13 @@ document.addEventListener('click', e => {
 
 });
 
-// Metrics Modal Functionality
-let metricsCharts = {};
-let currentMetricsData = {host: null, service: null, guid: null};
-let metricsRefreshInterval = null;
+
 
 function openMetricsModal(host, service, guid) {
 	currentMetricsData = {host, service, guid};
 	document.getElementById('metricsModal').style.display = 'flex';
 	loadMetrics('today');
-	
+
 	// Set up auto-refresh every 65 seconds
 	if (metricsRefreshInterval) {
 		clearInterval(metricsRefreshInterval);
@@ -513,13 +507,13 @@ function openMetricsModal(host, service, guid) {
 
 function closeMetricsModal() {
 	document.getElementById('metricsModal').style.display = 'none';
-	
+
 	// Clear refresh interval
 	if (metricsRefreshInterval) {
 		clearInterval(metricsRefreshInterval);
 		metricsRefreshInterval = null;
 	}
-	
+
 	// Destroy existing charts
 	Object.values(metricsCharts).forEach(chart => {
 		if (chart) chart.destroy();
@@ -529,16 +523,16 @@ function closeMetricsModal() {
 
 async function loadMetrics(timeframe) {
 	const {host, service, guid} = currentMetricsData;
-	
+
 	try {
 		const response = await fetch(`/api/metrics/${host}/${service}?timeframe=${timeframe}`);
 		const result = await response.json();
-		
+
 		if (!result.success) {
 			console.error('Error loading metrics:', result.error);
 			return;
 		}
-		
+
 		renderCharts(result.data, timeframe);
 	} catch (error) {
 		console.error('Error fetching metrics:', error);
@@ -548,13 +542,13 @@ async function loadMetrics(timeframe) {
 function renderCharts(metrics, timeframe) {
 	// Group metrics by type
 	const groupedMetrics = {
-		cpu: [],
-		memory: [],
-		players: [],
+		cpu_usage: [],
+		memory_usage: [],
+		player_count: [],
 		status: [],
 		response_time: []
 	};
-	
+
 	metrics.forEach(metric => {
 		if (groupedMetrics[metric.metric_title]) {
 			groupedMetrics[metric.metric_title].push({
@@ -563,12 +557,12 @@ function renderCharts(metrics, timeframe) {
 			});
 		}
 	});
-	
+
 	// Destroy existing charts
 	Object.values(metricsCharts).forEach(chart => {
 		if (chart) chart.destroy();
 	});
-	
+
 	// Common chart options
 	const commonOptions = {
 		responsive: true,
@@ -620,14 +614,14 @@ function renderCharts(metrics, timeframe) {
 			}
 		}
 	};
-	
+
 	// CPU Chart
 	metricsCharts.cpu = new Chart(document.getElementById('cpuChart'), {
 		type: 'line',
 		data: {
 			datasets: [{
 				label: 'CPU %',
-				data: groupedMetrics.cpu.map(m => ({x: m.timestamp, y: m.value})),
+				data: groupedMetrics.cpu_usage.map(m => ({x: m.timestamp, y: m.value})),
 				borderColor: '#0096ff',
 				backgroundColor: 'rgba(0, 150, 255, 0.1)',
 				fill: true,
@@ -636,14 +630,14 @@ function renderCharts(metrics, timeframe) {
 		},
 		options: commonOptions
 	});
-	
+
 	// Memory Chart
 	metricsCharts.memory = new Chart(document.getElementById('memoryChart'), {
 		type: 'line',
 		data: {
 			datasets: [{
 				label: 'Memory MB',
-				data: groupedMetrics.memory.map(m => ({x: m.timestamp, y: m.value})),
+				data: groupedMetrics.memory_usage.map(m => ({x: m.timestamp, y: m.value})),
 				borderColor: '#00d4aa',
 				backgroundColor: 'rgba(0, 212, 170, 0.1)',
 				fill: true,
@@ -652,14 +646,14 @@ function renderCharts(metrics, timeframe) {
 		},
 		options: commonOptions
 	});
-	
+
 	// Players Chart
 	metricsCharts.players = new Chart(document.getElementById('playersChart'), {
 		type: 'line',
 		data: {
 			datasets: [{
 				label: 'Players',
-				data: groupedMetrics.players.map(m => ({x: m.timestamp, y: m.value})),
+				data: groupedMetrics.player_count.map(m => ({x: m.timestamp, y: m.value})),
 				borderColor: '#ff6b6b',
 				backgroundColor: 'rgba(255, 107, 107, 0.1)',
 				fill: true,
@@ -681,7 +675,7 @@ function renderCharts(metrics, timeframe) {
 			}
 		}
 	});
-	
+
 	// Status Chart (1 = running, 0 = stopped)
 	metricsCharts.status = new Chart(document.getElementById('statusChart'), {
 		type: 'line',
@@ -714,7 +708,7 @@ function renderCharts(metrics, timeframe) {
 			}
 		}
 	});
-	
+
 	// Response Time Chart
 	metricsCharts.responseTime = new Chart(document.getElementById('responseTimeChart'), {
 		type: 'line',
@@ -753,7 +747,7 @@ function getTimeUnit(timeframe) {
 function toggleFullscreen() {
 	const modalContent = document.querySelector('#metricsModal .modal-content');
 	const btn = document.querySelector('#metricsModal .fullscreen-btn i');
-	
+
 	if (!document.fullscreenElement) {
 		modalContent.requestFullscreen().catch(err => {
 			console.error('Error attempting to enable fullscreen:', err);
@@ -765,20 +759,48 @@ function toggleFullscreen() {
 	}
 }
 
-// Timeframe selector event listeners
-document.addEventListener('DOMContentLoaded', () => {
-	document.querySelectorAll('.timeframe-btn').forEach(btn => {
-		btn.addEventListener('click', () => {
-			document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
-			btn.classList.add('active');
-			loadMetrics(btn.dataset.timeframe);
-		});
-	});
-	
-	// Close modal on overlay click
-	document.getElementById('metricsModal').addEventListener('click', (e) => {
-		if (e.target.id === 'metricsModal') {
-			closeMetricsModal();
+
+// Load on page load
+window.addEventListener('DOMContentLoaded', () => {
+	fetchHosts().then(hosts => {
+		if (Object.values(hosts).length === 0) {
+			displayNoHosts();
+			return;
 		}
+		fetchApplications().then(applications => {
+			// Display applications
+			displayApplications(applications);
+
+			// Load all services and periodically update the list
+			loadAllServicesAndStats();
+			setInterval(loadAllServicesAndStats, 60*1000); // Refresh services every 60 seconds
+
+			setTimeout(checkForUpdates, 10*1000); // Check for updates after 10 seconds
+			setInterval(checkForUpdates, 60*15*1000); // Check for updates every 15 minutes
+
+			// Timeframe selector event listeners
+			document.querySelectorAll('.timeframe-btn').forEach(btn => {
+				btn.addEventListener('click', () => {
+					document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+					btn.classList.add('active');
+					loadMetrics(btn.dataset.timeframe);
+				});
+			});
+
+			// Close modal on overlay click
+			document.getElementById('metricsModal').addEventListener('click', (e) => {
+				if (e.target.id === 'metricsModal') {
+					closeMetricsModal();
+				}
+			});
+		}).catch(error => {
+			document.getElementById('applicationsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
+			console.error('Error fetching applications:', error);
+		});
+	}).catch(error => {
+		document.getElementById('applicationsList').innerHTML = `<div style="grid-column:1/-1;"><p class="error-message">${error}</p></div>`;
+		console.error('Error fetching hosts:', error);
 	});
 });
+
+

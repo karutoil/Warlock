@@ -63,6 +63,7 @@ const session = require('express-session');
 const {logger} = require("./libs/logger.mjs");
 const {push_analytics} = require("./libs/push_analytics.mjs");
 const {sequelize} = require("./db.js");
+const {MetricsPollTask} = require("./tasks/metrics_poll.mjs");
 
 // Load environment variables
 dotenv.config();
@@ -73,9 +74,9 @@ app.set('view engine', 'ejs')
 app.use(cookieParser());
 
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'warlock_secret_key',
-    resave: false, // don't save session if unmodified
-    saveUninitialized: false, // don't create session until something stored
+	secret: process.env.SESSION_SECRET || 'warlock_secret_key',
+	resave: false, // don't save session if unmodified
+	saveUninitialized: false, // don't create session until something stored
 }));
 
 
@@ -137,14 +138,16 @@ app.use('/api/metrics', require('./routes/api/metrics'));
 
 // Start the server
 app.listen(PORT, '127.0.0.1', () => {
+	logger.info(`Listening on ${PORT}`);
 
-    // Ensure the sqlite database is up to date with the schema.
-    sequelize.sync({ alter: true }).then(() => {
-        logger.info(`Listening on ${PORT}`);
+	// Ensure the sqlite database is up to date with the schema.
+	sequelize.sync({ alter: true }).then(() => {
+		logger.info('Initialized database connection and synchronized schema.');
 
-        // Send a tracking snippet to our analytics server so we can monitor basic usage.
-        push_analytics('Start');
-    }).catch(err => {
-        logger.error('Database synchronization error:', err);
-    });
+		// Send a tracking snippet to our analytics server so we can monitor basic usage.
+		push_analytics('Start');
+
+		MetricsPollTask();
+		setInterval(MetricsPollTask, 60000); // Run every 60 seconds
+	});
 });

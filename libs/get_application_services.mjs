@@ -2,19 +2,18 @@ import {cmdRunner} from "./cmd_runner.mjs";
 import cache from "./cache.mjs";
 
 /**
- * Get the details of a single service on a given host
+ * Get the services for a single application on a given host
  *
  * @param appData {AppData}
  * @param hostData {HostAppData}
  * @returns {Promise<{services:Object.<{string}, ServiceData>, app:AppData, host:HostAppData}>}
  */
-export async function getServicesStatus(appData, hostData) {
+export async function getApplicationServices(appData, hostData) {
 	return new Promise((resolve, reject) => {
 
 		const guid = appData.guid;
 
-		//let cachedServices = cache.get(`services_${guid}_${hostData.host}`);
-		let cachedServices = null;
+		let cachedServices = cache.get(`services_${guid}_${hostData.host}`);
 		if (cachedServices) {
 			return resolve({
 				app: appData,
@@ -25,16 +24,30 @@ export async function getServicesStatus(appData, hostData) {
 
 		cmdRunner(hostData.host, `${hostData.path}/manage.py --get-services`)
 			.then(result => {
-				let appServices;
-				try{
-					appServices = JSON.parse(result.stdout);
+				let appServices = {},
+					allData,
+					keysInterestedIn = ['name', 'service', 'ip', 'port', 'enabled', 'max_players'];
+
+				try {
+					allData = JSON.parse(result.stdout);
+
+					// We just want some basic information for each service.
+					// Strictly this is not required, but it keeps the data size down
+					// and helps avoid confusion if the developer looks at this data and wonders why some data is stale.
+
+					for (let svcName in allData) {
+						appServices[svcName] = {};
+						for (let key of keysInterestedIn) {
+							appServices[svcName][key] = typeof(allData[svcName][key]) === 'undefined' ? null : allData[svcName][key];
+						}
+					}
 				}
-				catch(e){
+				catch(e) {
 					return reject(new Error(`Error parsing services data for application '${guid}' on host '${hostData.host}': ${e.message}`));
 				}
 
 				// Save this to cache for faster future lookups
-				//cache.set(`services_${guid}_${hostData.host}`, appServices, 10); // Cache for 10 seconds
+				cache.set(`services_${guid}_${hostData.host}`, appServices, 86400); // Cache for a day
 
 				return resolve({
 					app: appData,

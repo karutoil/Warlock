@@ -747,6 +747,33 @@ button.action-cancel:hover, a.button.action-cancel:hover {
 	transition: all 0.3s ease;
 }
 
+#services-table th.actions {
+	text-align: center;
+}
+
+#services-table td.actions button {
+	position: relative;
+}
+#services-table td.actions button i {
+	transition: all 0.4s ease;
+	position: absolute;
+	display: block;
+	width: 100%;
+	margin-left: -0.8rem;
+	margin-top: 2px;
+}
+#services-table td.actions button span {
+	transition: all 0.4s ease;
+	display: block;
+	opacity: 0;
+}
+#services-table td.actions button:hover i {
+	opacity: 0;
+}
+#services-table td.actions button:hover span {
+	opacity: 1;
+}
+
 #services-table .status {
 	text-align: center;
 }

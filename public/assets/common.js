@@ -43,6 +43,17 @@
  * @typedef {Object} ServiceData
  * @property {string} name Name of the service, usually operator set for the instance/map name.
  * @property {string} service Service identifier registered in systemd.
+ * @property {bool} enabled Whether the service is enabled to start on boot.
+ * @property {string} ip IP address the service is bound to.
+ * @property {number} port Port number the service is using.
+ */
+
+/**
+ * Represents the details of a service.
+ *
+ * @typedef {Object} FullServiceData
+ * @property {string} name Name of the service, usually operator set for the instance/map name.
+ * @property {string} service Service identifier registered in systemd.
  * @property {string} status Current status of the service, one of [running, stopped, starting, stopping].
  * @property {string} cpu_usage Current CPU usage of the service as a percentage or 'N/A'.
  * @property {string} memory_usage Current memory usage of the service in MB/GB or 'N/A'.
@@ -345,7 +356,7 @@ function renderAppIcon(guid) {
 	}
 
 	if (url) {
-		return `<img src="${url}" alt="${appData.title} Icon" title="${appData.title} Icon">`;
+		return `<img src="${url}" alt="${appData.title} Icon" title="${appData.title}">`;
 	}
 	else {
 		return '<i class="fas fa-cube" style="font-size: 1.5rem; color: white;"></i>';
@@ -658,7 +669,17 @@ function stream(
 		}
 
 		if (messageHandler) {
-			try { messageHandler(event, data); } catch (e) { console.error('messageHandler error', e); }
+			try {
+				let ret = messageHandler(event, data);
+				// Allow a return status from the handler to control if this stream should be aborted.
+				if (ret === false) {
+					abortedByClient = true;
+					try { controller.abort(); } catch (e) {}
+				}
+			}
+			catch (e) {
+				console.error('messageHandler error', e);
+			}
 		}
 	};
 

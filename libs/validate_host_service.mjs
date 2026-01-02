@@ -1,5 +1,6 @@
 import { getAllApplications } from './get_all_applications.mjs';
 import { getServicesStatus } from './get_services_status.mjs';
+import {getApplicationServices} from "./get_application_services.mjs";
 
 /**
  *
@@ -24,7 +25,7 @@ export async function validateHostService(host, guid, service) {
 						found = true;
 
 						// Check if the service exists on the target host for this application
-						getServicesStatus(app, hostData)
+						getApplicationServices(app, hostData)
 							.then(serviceResults => {
 								const svc = serviceResults.services[service] || null;
 

@@ -4,31 +4,6 @@ const {Metric} = require('../../db.js');
 const {Op} = require('sequelize');
 const router = express.Router();
 
-// Store new metrics
-router.post('/', validate_session, async (req, res) => {
-	try {
-		const {ip, metric_title, app_guid, service, metric_value, timestamp} = req.body;
-		
-		if (!ip || !metric_title || !app_guid || !service || metric_value === undefined || !timestamp) {
-			return res.json({success: false, error: 'Missing required fields'});
-		}
-		
-		await Metric.create({
-			ip,
-			metric_title,
-			app_guid,
-			service,
-			metric_value,
-			timestamp
-		});
-		
-		return res.json({success: true});
-	} catch (error) {
-		console.error('Error storing metric:', error);
-		return res.json({success: false, error: error.message});
-	}
-});
-
 // Retrieve historical metrics for a service
 router.get('/:ip/:service', validate_session, async (req, res) => {
 	try {
