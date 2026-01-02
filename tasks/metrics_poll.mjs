@@ -61,5 +61,8 @@ export function MetricsPollTask() {
 						}
 					});
 				});
+		})
+		.catch(e => {
+			logger.warn('MetricsPollTask: Error polling metrics:', e.message);
 		});
 }
