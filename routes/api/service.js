@@ -68,6 +68,14 @@ router.get('/stream/:guid/:host/:service', validate_session, (req, res) => {
 				res.write(`data: ${JSON.stringify(ret)}\n\n`);
 
 				setTimeout(lookup,5000);
+			}).catch(e => {
+				if (clientGone) return;
+
+				res.write(`data: ${JSON.stringify({
+					success: false,
+					error: e.message,
+					service: []
+				})}\n\n`);
 			});
 		};
 
