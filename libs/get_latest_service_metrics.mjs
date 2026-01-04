@@ -30,20 +30,28 @@ export async function getLatestServiceMetrics(app_guid, host, service) {
 		});
 
 		if (res) {
-			
+			if (res.cpu_usage !== null) {
 				metrics.cpu_usage = res.cpu_usage + '%';
-			
+			}
+
+			if (res.memory_usage !== null) {
 				if (res.memory_usage > 1024) {
 					metrics.memory_usage = (res.memory_usage / 1024).toFixed(2) + ' GB';
 				}
 				else {
 					metrics.memory_usage = res.memory_usage + ' MB';
 				}
-			
-				metrics.status = res.status === 1 ? 'running' : 'stopped';
+			}
+
+			metrics.status = res.status === 1 ? 'running' : 'stopped';
+
+			if (res.player_count !== null) {
 				metrics.player_count = res.player_count;
+			}
+
+			if (res.response_time !== null) {
 				metrics.response_time = res.response_time + ' ms';
-							
+			}
 		}
 
 	return metrics;
