@@ -1110,15 +1110,22 @@ button.action-cancel:hover, a.button.action-cancel:hover {
 
 .backup-file-item {
 	display: flex;
+	flex-wrap: wrap;
 }
+
+.backup-file-item .file-name {
+	flex: 3;
+}
+
 .backup-file-item .file-modified {
-	flex: 1;
+	flex: 2;
 }
 .backup-file-item .file-size {
 	flex: 1;
 }
 .backup-file-item .file-actions {
-	flex: 2;
+	flex: 6 100%;
+	margin-top: 0.5rem;
 }
 
 /* ==========================

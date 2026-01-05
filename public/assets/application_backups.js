@@ -14,7 +14,10 @@ const backupsList = document.getElementById('backupsList'),
 	autoBackupKeep = document.getElementById('autoBackupKeep'),
 	saveAutoBackupBtn = document.getElementById('saveAutoBackupBtn'),
 	uploadBtn = document.getElementById('uploadBtn'),
-	fileInput = document.getElementById('fileInput');
+	fileInput = document.getElementById('fileInput'),
+	renameModal = document.getElementById('renameModal'),
+	renameInput = document.getElementById('renameNewName'),
+	confirmRenameBtn = document.getElementById('confirmRename');
 
 let backupPath;
 
@@ -27,9 +30,14 @@ function renderBackupFile(fileData) {
 	const fileItem = document.createElement('div');
 	fileItem.classList.add('backup-file-item');
 	fileItem.innerHTML = `
+		<div class="file-name">${fileData.name}</div>
 		<div class="file-modified">${convertTimestampToDateTimeString(fileData.modified)}</div>
 		<div class="file-size">${formatFileSize(fileData.size)}</div>
 		<div class="file-actions button-group">
+			<button class="action-rename">
+				<i class="fas fa-pencil"></i>
+				Rename
+			</button>
 			<button class="action-download">
 				<i class="fas fa-download"></i>
 				Download
@@ -44,6 +52,22 @@ function renderBackupFile(fileData) {
 			</button>
 		</div>`;
 
+	fileItem.querySelector('.action-rename').addEventListener('click', () => {
+		let filename = fileData.name,
+			extension = '';
+		// Most files here will end in '.tar.gz', so trim that for the rename input
+		if (filename.endsWith('.tar.gz')) {
+			filename = filename.slice(0, -7);
+			extension = '.tar.gz';
+		} else if (filename.endsWith('.zip')) {
+			filename = filename.slice(0, -4);
+			extension = '.zip';
+		}
+		renameInput.value = filename;
+		renameInput.dataset.extension = extension;
+		renameInput.dataset.path = fileData.path;
+		renameModal.classList.add('show');
+	});
 	fileItem.querySelector('.action-download').addEventListener('click', () => {
 		window.open(`/api/file/${loadedHost}?path=${fileData.path}&download=1`, '_blank');
 	});
@@ -59,6 +83,51 @@ function renderBackupFile(fileData) {
 	});
 
 	return fileItem;
+}
+
+async function performRename() {
+	let newName = renameInput.value.trim(),
+		oldName = renameInput.dataset.path,
+		path = oldName.split('/');
+	path = path.slice(0, path.length - 1).join('/');
+
+	if (!newName) {
+		alert('Please enter a new name');
+		return;
+	}
+
+	// Do some basic sanitization
+	newName = newName.replace(/[!/\\?%*:|"<> ]/g, '-');
+
+	newName =  path + '/' + newName + renameInput.dataset.extension;
+
+	if (newName === oldName) {
+		renameModal.classList.remove('show');
+		return;
+	}
+
+	try {
+		const response = await fetch(`/api/file/${loadedHost}`, {
+			method: 'MOVE',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				oldPath: oldName,
+				newPath: newName
+			})
+		});
+
+		const result = await response.json();
+
+		if (result.success) {
+			showToast('success', 'Item renamed successfully');
+			renameModal.classList.remove('show');
+			loadBackupsList();
+		} else {
+			showToast('error', `Error renaming item: ${result.error}`);
+		}
+	} catch (error) {
+		showToast('error', `Network error: ${error.message}`);
+	}
 }
 
 async function loadBackupsList() {
@@ -239,6 +308,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
 			loadAutomaticBackupConfig();
 			loadBackupsList();
+
+			confirmRenameBtn.addEventListener('click', () => {
+				performRename();
+			});
 
 			performBackupBtn.addEventListener('click', () => {
 				backupModal.classList.add('show');
