@@ -34,7 +34,10 @@ export function MetricsPollTask() {
 										memoryValue = parseFloat(memoryMatch[1]);
 										// Convert GB to MB if needed
 										if (memoryMatch[2] && memoryMatch[2].toUpperCase() === 'GB') {
-											memoryValue = memoryValue * 1024;
+											memoryValue = parseInt(memoryValue * 1024);
+										}
+										else {
+											memoryValue = parseInt(memoryValue);
 										}
 									}
 								}

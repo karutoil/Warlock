@@ -64,6 +64,7 @@ const {logger} = require("./libs/logger.mjs");
 const {push_analytics} = require("./libs/push_analytics.mjs");
 const {sequelize} = require("./db.js");
 const {MetricsPollTask} = require("./tasks/metrics_poll.mjs");
+const {MetricsMergeTask} = require("./tasks/metrics_merge.mjs");
 
 // Load environment variables
 dotenv.config();
@@ -149,5 +150,8 @@ app.listen(PORT, '127.0.0.1', () => {
 
 		MetricsPollTask();
 		setInterval(MetricsPollTask, 60000); // Run every 60 seconds
+
+		MetricsMergeTask();
+		setInterval(MetricsMergeTask, 3600000); // Run every hour
 	});
 });

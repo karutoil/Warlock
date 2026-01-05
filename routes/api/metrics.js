@@ -23,6 +23,9 @@ router.get('/:ip/:service', validate_session, async (req, res) => {
 				todayStart.setHours(0, 0, 0, 0);
 				startTime = Math.floor(todayStart.getTime() / 1000);
 				break;
+			case 'day':
+				startTime = now - (24 * 60 * 60);
+				break;
 			case 'week':
 				startTime = now - (7 * 24 * 60 * 60);
 				break;

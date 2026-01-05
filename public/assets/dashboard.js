@@ -493,14 +493,14 @@ document.addEventListener('click', e => {
 function openMetricsModal(host, service, guid) {
 	currentMetricsData = {host, service, guid};
 	document.getElementById('metricsModal').style.display = 'flex';
-	loadMetrics('today');
+	loadMetrics('day');
 
 	// Set up auto-refresh every 65 seconds
 	if (metricsRefreshInterval) {
 		clearInterval(metricsRefreshInterval);
 	}
 	metricsRefreshInterval = setInterval(() => {
-		const activeTimeframe = document.querySelector('.timeframe-btn.active')?.dataset.timeframe || 'today';
+		const activeTimeframe = document.querySelector('.timeframe-btn.active')?.dataset.timeframe || 'day';
 		loadMetrics(activeTimeframe);
 	}, 65000);
 }
@@ -745,6 +745,7 @@ function getTimeUnit(timeframe) {
 		case 'hour':
 			return 'minute';
 		case 'today':
+		case 'day':
 		case 'week':
 			return 'hour';
 		case 'month':
