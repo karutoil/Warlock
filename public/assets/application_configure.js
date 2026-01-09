@@ -11,7 +11,9 @@ const autoUpdateModal = document.getElementById('autoUpdateModal'),
 	openUpdateBtn = document.getElementById('openUpdateBtn'),
 	updateModal = document.getElementById('updateModal'),
 	confirmUpdateBtn = document.getElementById('confirmUpdateBtn'),
-	reinstallBtn = document.getElementById('reinstallBtn');
+	reinstallBtn = document.getElementById('reinstallBtn'),
+	delayedUpdate = document.getElementById('delayedUpdate'),
+	autoUpdateSchedule = document.getElementById('autoUpdateSchedule');
 
 let applicationOptions = [];
 
@@ -30,6 +32,12 @@ async function loadAutomaticUpdates() {
 		else {
 			automatedUpdatesDisabledMessage.style.display = 'flex';
 			automatedUpdatesEnabledMessage.style.display = 'none';
+		}
+
+		if (!applicationOptions.includes('delayed-update')) {
+			delayedUpdate.closest('.form-group').querySelector('p').textContent = 'Note: this game does not support delayed updates.';
+			delayedUpdate.disabled = true;
+			delayedUpdate.checked = false;
 		}
 	}).catch(e => {
 		console.error('Error loading cron job:', e);
@@ -62,6 +70,7 @@ async function saveAutomaticUpdates() {
 	const guid = loadedApplication;
 	const identifier = `${loadedApplication}_update`;
 	const gameDir = (applicationData[guid] && applicationData[guid].hosts && applicationData[guid].hosts.filter(h => h.host === loadedHost)[0]) ? applicationData[guid].hosts.filter(h => h.host === loadedHost)[0].path : null;
+	let command;
 
 	if (!gameDir) {
 		showToast('error', 'Cannot determine game directory for this host.');
@@ -91,8 +100,13 @@ async function saveAutomaticUpdates() {
 		return;
 	}
 
-	// Build command
-	const command = `! ${gameDir}/manage.py --has-players && ${gameDir}/manage.py --check-update && ${gameDir}/manage.py --update`;
+	if (applicationOptions.includes('delayed-update') && delayedUpdate.checked) {
+		// Build command for delayed updates
+		command = `${gameDir}/manage.py --check-update && ${gameDir}/manage.py --delayed-update`;
+	}
+	else {
+		command = `! ${gameDir}/manage.py --has-players && ${gameDir}/manage.py --check-update && ${gameDir}/manage.py --update`;
+	}
 
 	fetch(`/api/cron/${loadedHost}`, {
 		method: 'POST',
@@ -214,6 +228,14 @@ window.addEventListener('DOMContentLoaded', () => {
 
 			openUpdateBtn.addEventListener('click', () => {
 				updateModal.classList.add('show');
+			});
+			autoUpdateSchedule.addEventListener('change', () => {
+				if (autoUpdateSchedule.value === 'disabled') {
+					delayedUpdate.closest('.form-group').style.display = 'none';
+				}
+				else {
+					delayedUpdate.closest('.form-group').style.display = 'flex';
+				}
 			});
 			confirmUpdateBtn.addEventListener('click', () => {
 				confirmUpdateBtn.classList.add('disabled');

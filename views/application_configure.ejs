@@ -130,8 +130,8 @@
         </div>
         <div class="modal-body">
             <div class="form-group">
-                <label for="autoBackupSchedule">Schedule</label>
-                <select id="autoBackupSchedule" name="schedule">
+                <label for="autoUpdateSchedule">Schedule</label>
+                <select id="autoUpdateSchedule" name="schedule">
                     <option value="disabled">Disabled</option>
                     <option value="hourly">Hourly</option>
                     <option value="daily">Daily</option>
@@ -139,9 +139,9 @@
                 </select>
             </div>
 
-            <div class="form-group" id="autoBackupWeeklyDayRow">
-                <label for="autoBackupWeeklyDay">Weekly Day</label>
-                <select id="autoBackupWeeklyDay" name="weekly_day">
+            <div class="form-group" id="autoUpdateWeeklyDayRow">
+                <label for="autoUpdateWeeklyDay">Weekly Day</label>
+                <select id="autoUpdateWeeklyDay" name="weekly_day">
                     <option value="mon">Monday</option>
                     <option value="tue">Tuesday</option>
                     <option value="wed">Wednesday</option>
@@ -153,8 +153,17 @@
             </div>
 
             <div class="form-group">
-                <label for="autoBackupTime">Time</label>
-                <input type="time" id="autoBackupTime" name="time" value="02:00">
+                <label for="autoUpdateTime">Time</label>
+                <input type="time" id="autoUpdateTime" name="time" value="02:00">
+            </div>
+
+            <div class="form-group">
+                <label for="delayedUpdate">Update if Players Online</label>
+                <input type="checkbox" id="delayedUpdate" name="delayed_update">
+                <p class="form-help-text">
+                    If enabled, updates will run even if players are online, with a 1-hour warning.
+                    Otherwise, restart/updates will be skipped if players are detected.
+                </p>
             </div>
         </div>
         <div class="modal-footer">

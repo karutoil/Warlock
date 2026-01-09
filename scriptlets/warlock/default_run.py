@@ -18,7 +18,7 @@ def menu_delayed_action_game(game, action):
 	:return:
 	"""
 
-	if not action in ['stop', 'restart']:
+	if not action in ['stop', 'restart', 'update']:
 		print('ERROR - Invalid action for delayed action: %s' % action, file=sys.stderr)
 		return
 
@@ -44,7 +44,7 @@ def menu_delayed_action_game(game, action):
 			if service.is_running():
 				still_running = True
 				if service.service not in services_running:
-					services_running.append(service)
+					services_running.append(service.service)
 
 				player_count = service.get_player_count()
 
@@ -74,10 +74,15 @@ def menu_delayed_action_game(game, action):
 
 		time.sleep(60)
 
-	if action == 'restart':
+	if action == 'update':
+		# Now that all services have been stopped, perform the update
+		game.update()
+
+	if action == 'restart' or action == 'update':
 		# Now that all services have been stopped, restart any that were running before
 		for service in services:
 			if service.service in services_running:
+				print('Restarting %s' % service.service)
 				service.start()
 
 
@@ -217,6 +222,18 @@ def menu_get_metrics(game):
 
 def run_manager(game):
 	parser = argparse.ArgumentParser('manage.py')
+	game_actions = parser.add_argument_group(
+		'Game Commands',
+		'Perform a given action on the game server, only compatible WITHOUT --service'
+	)
+	service_actions = parser.add_argument_group(
+		'Service Commands',
+		'Perform a given action on a game instance, MUST be used with --service'
+	)
+	shared_actions = parser.add_argument_group(
+		'Shared Commands',
+		'Perform a given action on either the game server or a specific instance when used with --service'
+	)
 
 	parser.add_argument(
 		'--debug',
@@ -229,117 +246,128 @@ def run_manager(game):
 		'--service',
 		help='Specify the service instance to manage (default: ALL)',
 		type=str,
-		default='ALL'
+		default='ALL',
+		metavar='service-name'
 	)
 
 	# Basic start/stop operations
-	parser.add_argument(
-		'--pre-stop',
-		help='Send notifications to game players and Discord and save the world',
-		action='store_true'
-	)
-	parser.add_argument(
-		'--post-start',
-		help='Send notifications to game players and Discord after starting the server',
-		action='store_true'
-	)
-	parser.add_argument(
-		'--stop',
-		help='Stop the game server',
-		action='store_true'
-	)
-	parser.add_argument(
+	shared_actions.add_argument(
 		'--start',
-		help='Start the game server',
+		help='Start all instances of this game server or a specific server when used with --service',
 		action='store_true'
 	)
-	parser.add_argument(
+	shared_actions.add_argument(
+		'--stop',
+		help='Stop all instances of this game server or a specific server when used with --service',
+		action='store_true'
+	)
+	shared_actions.add_argument(
 		'--restart',
-		help='Restart the game server',
+		help='Restart the game server or specific instance when used with --service',
 		action='store_true'
 	)
-	parser.add_argument(
+	shared_actions.add_argument(
+		'--delayed-stop',
+		help='Send a 1-hour warning to players before stopping the game server or instance when used with --service',
+		action='store_true'
+	)
+	shared_actions.add_argument(
+		'--delayed-restart',
+		help='Send a 1-hour warning to players before restarting the game server or specific instance when used with --service',
+		action='store_true'
+	)
+	game_actions.add_argument(
+		'--update',
+		help='Update the game server to the latest version',
+		action='store_true'
+	)
+	game_actions.add_argument(
+		'--delayed-update',
+		help='Send a 1-hour warning to players before updating the game server',
+		action='store_true'
+	)
+
+	service_actions.add_argument(
+		'--pre-stop',
+		help='Send notifications to game players and Discord and save the world, (called automatically)',
+		action='store_true'
+	)
+	service_actions.add_argument(
+		'--post-start',
+		help='Send notifications to Discord, (called automatically)',
+		action='store_true'
+	)
+
+	shared_actions.add_argument(
 		'--is-running',
 		help='Check if any game service is currently running (exit code 0 = yes, 1 = no)',
 		action='store_true'
 	)
-	parser.add_argument(
+	shared_actions.add_argument(
 		'--has-players',
 		help='Check if any players are currently connected to any game service (exit code 0 = yes, 1 = no)',
 		action='store_true'
 	)
-	parser.add_argument(
-		'--delayed-stop',
-		help='Send a 1-hour warning to players before stopping the game server',
-		action='store_true'
-	)
-	parser.add_argument(
-		'--delayed-restart',
-		help='Send a 1-hour warning to players before restarting the game server',
-		action='store_true'
-	)
 
 	# Backup/restore operations
-	parser.add_argument(
+	game_actions.add_argument(
 		'--backup',
 		help='Backup the game server files',
 		action='store_true'
 	)
 	parser.add_argument(
 		'--max-backups',
-		help='Maximum number of backups to keep when creating a new backup (default: 0 = unlimited)',
+		help='Maximum number of backups to keep when creating a new backup (default: 0 = unlimited), expected to be used with --backup',
 		type=int,
 		default=0
 	)
-	parser.add_argument(
+	game_actions.add_argument(
 		'--restore',
 		help='Restore the game server files from a backup archive',
 		type=str,
-		default=''
+		default='',
+		metavar='/path/to/backup-filename.tar.gz'
 	)
 
-	parser.add_argument(
+	game_actions.add_argument(
 		'--check-update',
 		help='Check for game updates and report the status',
 		action='store_true'
 	)
-	parser.add_argument(
-		'--update',
-		help='Update the game server to the latest version',
-		action='store_true'
-	)
-	parser.add_argument(
+
+	game_actions.add_argument(
 		'--get-services',
 		help='List the available service instances for this game (JSON encoded)',
 		action='store_true'
 	)
-	parser.add_argument(
+	shared_actions.add_argument(
 		'--get-configs',
 		help='List the available configuration files for this game or instance (JSON encoded)',
 		action='store_true'
 	)
-	parser.add_argument(
+	shared_actions.add_argument(
 		'--set-config',
 		help='Set a configuration option for the game',
 		type=str,
-		nargs=2
+		nargs=2,
+		metavar=('option', 'value')
 	)
-	parser.add_argument(
+	shared_actions.add_argument(
 		'--get-ports',
 		help='Get the network ports used by all game services (JSON encoded)',
 		action='store_true'
 	)
-	parser.add_argument(
+	'''parser.add_argument(
 		'--logs',
 		help='Print the latest logs from the game service',
 		action='store_true'
-	)
-	parser.add_argument(
+	)'''
+	game_actions.add_argument(
 		'--first-run',
 		help='Perform first-run configuration for setting up the game server initially',
 		action='store_true'
 	)
-	parser.add_argument(
+	game_actions.add_argument(
 		'--get-metrics',
 		help='Get performance metrics from the game server (JSON encoded)',
 		action='store_true'
@@ -482,6 +510,11 @@ def run_manager(game):
 			menu_delayed_action_game(game, 'restart')
 		else:
 			menu_delayed_action(services[0], 'restart')
+	elif args.delayed_update:
+		if args.service != 'ALL':
+			print('ERROR: --delayed-update can only be used when managing all service instances.', file=sys.stderr)
+			sys.exit(1)
+		menu_delayed_action_game(game, 'update')
 	else:
 		if len(services) > 1:
 			if not callable(getattr(sys.modules[__name__], 'menu_main', None)):
