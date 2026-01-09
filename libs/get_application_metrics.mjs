@@ -1,6 +1,7 @@
 import {cmdRunner} from "./cmd_runner.mjs";
 import {Metric} from "../db.js";
 import {logger} from "./logger.mjs";
+import cache from "./cache.mjs";
 
 /**
  * Get the metrics of an application on a given host
@@ -81,6 +82,10 @@ export async function getApplicationMetrics(appData, hostData, service = null) {
 						}
 						catch(e) {
 							logger.warn(`MetricsPollTask: Error saving metrics for service '${svcName}' on app '${guid}' at host '${hostData.host}':`, e.message);
+						}
+
+						if (typeof(svc.players) !== 'undefined') {
+							cache.set(`players_${guid}_${hostData.host}_${svcName}`, svc.players, 5 * 60); // Cache for 5 minutes
 						}
 					}
 				}

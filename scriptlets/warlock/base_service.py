@@ -215,6 +215,13 @@ class BaseService:
 		"""
 		pass
 
+	def get_players(self) -> Union[list, None]:
+		"""
+		Get a list of current players on the server, or None if the API is unavailable
+		:return:
+		"""
+		pass
+
 	def get_pid(self) -> int:
 		"""
 		Get the PID of the running service, or 0 if not running

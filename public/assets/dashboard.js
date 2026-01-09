@@ -152,6 +152,11 @@ function populateServicesTable(servicesWithStats) {
 			if (service.max_players) {
 				val += ' / ' + service.max_players;
 			}
+			// If service.players is an array with more than one element, show a tooltip with player names
+			if (Array.isArray(service.players) && service.players.length > 0) {
+				let playerNames = service.players.map(p => p.player_name).join(', ');
+				cell.title = 'Current Players: ' + playerNames;
+			}
 		} else if (field === 'memory') {
 			val = service.memory_usage || '-';
 		} else if (field === 'cpu') {

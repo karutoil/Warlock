@@ -186,6 +186,14 @@ def menu_get_metrics(game):
 		if start_exec and start_exec['stop_time']:
 			start_exec['stop_time'] = int(start_exec['stop_time'].timestamp())
 
+		players = svc.get_players()
+		# Some games may not support getting a full player list
+		if players is None:
+			players = []
+			player_count = svc.get_player_count()
+		else:
+			player_count = len(players)
+
 		svc_stats = {
 			'service': svc.service,
 			'name': svc.get_name(),
@@ -193,7 +201,8 @@ def menu_get_metrics(game):
 			'port': svc.get_port(),
 			'status': status,
 			'enabled': svc.is_enabled(),
-			'player_count': svc.get_player_count(),
+			'players': players,
+			'player_count': player_count,
 			'max_players': svc.get_player_max(),
 			'memory_usage': svc.get_memory_usage(),
 			'cpu_usage': svc.get_cpu_usage(),
