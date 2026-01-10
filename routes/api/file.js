@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { Host } = require('../../db');
 const { logger } = require('../../libs/logger.mjs');
+const {buildRemoteExec} = require("../../libs/build_remote_exec.mjs");
 
 const router = express.Router();
 
@@ -397,6 +398,144 @@ router.delete('/:host', validate_session, (req, res) => {
 					error: `Cannot delete file: ${e.error.message}`
 				});
 			});
+	});
+});
+
+/**
+ * Save file contents to a given path on the target host
+ */
+router.post('/extract/:host', validate_session, (req, res) => {
+	let host = req.params.host,
+		path = req.query.path || null;
+
+	// Sanity checks
+	if (!path) {
+		return res.json({
+			success: false,
+			error: 'Please enter a file path'
+		});
+	}
+
+	Host.count({ where: { ip: host } }).then(count => {
+		if (count === 0) {
+			return res.json({
+				success: false,
+				error: 'Requested host is not in the configured HOSTS list'
+			});
+		}
+
+		// Retrieve some information about the file and target environment.
+		// We'll need to know the mimetype of the archive and which archive formats are available.
+		const cmdDiscover = `if [ -e "${path}" ]; then file --mime-type "${path}"; else echo "missing"; fi;` +
+			'if which unzip &>/dev/null; then echo "zip"; fi;' +
+			'if which unrar &>/dev/null; then echo "rar"; fi;' +
+			'if which tar &>/dev/null; then echo "tar"; echo "tar/gz"; echo "tar/xz"; echo "tar/bzip2"; fi;' +
+			'if which unxz &>/dev/null; then echo "xz"; fi;' +
+			'if which bunzip2 &>/dev/null; then echo "bzip2"; fi;' +
+			'if which 7z &>/dev/null; then echo "7z"; fi;';
+
+		const mimetypeToHandler = {
+			'application/zip': 'zip',
+			'application/x-rar': 'rar',
+			'application/x-tar': 'tar',
+			'application/gzip': 'gzip',
+			'application/x-bzip2': 'bzip2',
+			'application/x-xz': 'xz',
+			'application/x-7z-compressed': '7z',
+		};
+
+		const handlerSources = {
+			'zip': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/zip/linux_install_unzip.sh',
+			'rar': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/rar/linux_install_unrar.sh',
+			'7z': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/7zip/linux_install_7zip.sh',
+		};
+
+		const cmdSudoPrefix = `sudo -u $(stat -c%U "$(dirname "${path}")")`;
+
+		const cmdExtracts = {
+			'zip': `${cmdSudoPrefix} unzip -o "${path}" -d "$(dirname "${path}")/"`,
+			'rar': `${cmdSudoPrefix} unrar x -o+ "${path}" "$(dirname "${path}")/"`,
+			'7z': `${cmdSudoPrefix} 7z x "${path}" -o"$(dirname "${path}")/" -y`,
+			'tar/gzip': `${cmdSudoPrefix} tar -xzf "${path}" -C "$(dirname "${path}")/"`,
+			'tar/bzip2': `${cmdSudoPrefix} tar -xjf "${path}" -C "$(dirname "${path}")/"`,
+			'tar/xz': `${cmdSudoPrefix} tar -xJf "${path}" -C "$(dirname "${path}")/"`,
+			'gzip': `${cmdSudoPrefix} gunzip -c "${path}" > "$(dirname "${path}")/$(basename "${path}" .gz)"`,
+			'bzip2': `${cmdSudoPrefix} bunzip2 -c "${path}" > "$(dirname "${path}")/$(basename "${path}" .bz2)"`,
+			'xz': `${cmdSudoPrefix} unxz -c "${path}" > "$(dirname "${path}")/$(basename "${path}" .xz)"`,
+		}
+
+		cmdRunner(host, cmdDiscover).then(async output => {
+			let lines = output.stdout.trim().split('\n'),
+				mimetype = lines[0] || 'missing',
+				availableExtractors = lines.slice(1);
+
+			if (mimetype.includes(': ')) {
+				mimetype = mimetype.split(': ').pop().trim();
+			}
+
+			if (mimetype === 'missing') {
+				return res.json({
+					success: false,
+					error: 'The specified file does not exist'
+				});
+			}
+
+			let handler = mimetypeToHandler[mimetype] || null;
+			if (!handler) {
+				return res.json({
+					success: false,
+					error: `Unsupported archive mimetype: ${mimetype}`
+				});
+			}
+
+			// Tarballs can be complicated, ie '.tar.gz' or '.tgz' will both be 'application/gzip' mimetype
+			// but so will '.gz' files which are not tarballs.  We need to check the filename as well.
+			if (handler === 'gzip' && (path.endsWith('.tar.gz') || path.endsWith('.tgz'))) {
+				handler = 'tar/gzip';
+			}
+			else if (handler === 'bzip2' && path.endsWith('.tar.bz2')) {
+				handler = 'tar/bzip2';
+			}
+			else if (handler === 'xz' && path.endsWith('.tar.xz')) {
+				handler = 'tar/xz';
+			}
+
+			if (!availableExtractors.includes(handler)) {
+				// Install this handler on the server
+				let source = handlerSources[handler] || null;
+				if (!source) {
+					return res.json({
+						success: false,
+						error: `No installation source found for missing extractor: ${handler}`
+					});
+				}
+
+				await cmdRunner(host, buildRemoteExec(source).cmd);
+			}
+
+			const cmdExtract = cmdExtracts[handler] || null;
+			if (!cmdExtract) {
+				return res.json({
+					success: false,
+					error: `No extraction command found for handler: ${handler}`
+				});
+			}
+
+			// Finally, extract the archive
+			cmdRunner(host, cmdExtract).then(async output => {
+				logger.info('Extracted archive successfully:', path);
+				res.json({
+					success: true,
+					message: 'Archive extracted successfully'
+				});
+			});
+		})
+		.catch(e => {
+			return res.json({
+				success: false,
+				error: `Cannot extract archive: ${e.error.message}`
+			});
+		});
 	});
 });
 

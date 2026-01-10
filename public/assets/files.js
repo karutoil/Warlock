@@ -6,6 +6,7 @@ const currentPathEl = document.getElementById('currentPath');
 const refreshBtn = document.getElementById('refreshBtn');
 const upBtn = document.getElementById('upBtn');
 const host = window.location.pathname.substring(7);
+const contextMenu = document.getElementById('contextMenu');
 
 let currentEditFile = null;
 
@@ -793,9 +794,28 @@ async function loadApplicationPaths() {
 		});
 }
 
+function populateContextMenu(fileItem) {
+	let isArchive = false,
+		mimetype = fileItem.dataset.mimetype || '';
+
+	isArchive = [
+		'application/zip',
+		'application/gzip',
+		'application/x-gzip',
+		'application/x-tar',
+		'application/x-7z-compressed',
+		'application/x-rar-compressed',
+		'application/x-bzip2',
+		'application/x-xz'
+	].includes(mimetype);
+
+	contextMenu.querySelector('.action-extract').style.display = isArchive ? 'flex' : 'none';
+}
+
 function showContextMenu(event, itemPath, itemName, isDirectory) {
-	const contextMenu = document.getElementById('contextMenu');
 	contextMenuData = { path: itemPath, name: itemName, isDirectory };
+
+	populateContextMenu(event.target.closest('.file-item'));
 
 	// Position the context menu at mouse position
 	contextMenu.style.left = event.pageX + 'px';
@@ -805,9 +825,9 @@ function showContextMenu(event, itemPath, itemName, isDirectory) {
 
 function showThreeDotMenu(itemPath, itemName, isDirectory, event) {
 	if (event) event.stopPropagation();
-
-	const contextMenu = document.getElementById('contextMenu');
 	contextMenuData = { path: itemPath, name: itemName, isDirectory };
+
+	populateContextMenu(event.target.closest('.file-item'));
 
 	// Position the context menu near the three-dot button
 	const rect = event.target.closest('.three-dot-btn').getBoundingClientRect();
@@ -817,7 +837,6 @@ function showThreeDotMenu(itemPath, itemName, isDirectory, event) {
 }
 
 function hideContextMenu() {
-	const contextMenu = document.getElementById('contextMenu');
 	contextMenu.classList.remove('show');
 }
 
@@ -974,6 +993,31 @@ function showDeleteModal() {
 	deleteModal.classList.add('show');
 }
 
+async function performExtract() {
+	if (!contextMenuData) return;
+
+	showToast('info', `Extracting ${contextMenuData.path}, please wait a moment.`);
+	hideContextMenu();
+
+	fetch(`/api/file/extract/${host}?path=${contextMenuData.path}`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		}
+	})
+		.then(response => response.json())
+		.then(result => {
+			if (result.success) {
+				showToast('success', result.message);
+				loadDirectory(currentPath); // Refresh current directory
+				contextMenuData = null;
+			}
+			else {
+				showToast('error', `Error extracting archive: ${result.error}`);
+			}
+		});
+}
+
 async function performDelete() {
 	if (!contextMenuData) return;
 
@@ -1092,6 +1136,9 @@ confirmRenameBtn.addEventListener('click', performRename);
 // Delete file
 document.getElementById('contextDelete').addEventListener('click', showDeleteModal);
 confirmDeleteBtn.addEventListener('click', performDelete);
+
+// Extract file
+document.getElementById('contextExtract').addEventListener('click', performExtract);
 
 // Restore backup file
 restoreBackupFileBtn.addEventListener('click', () => {
