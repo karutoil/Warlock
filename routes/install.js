@@ -1,7 +1,7 @@
 const express = require('express');
 const {User, Host} = require("../db");
 const router = express.Router();
-const csrf = require('csurf');
+const csrf = require('@dr.pogodin/csurf');
 const bodyParser = require('body-parser');
 
 let csrfProtection = csrf({ cookie: true });

@@ -1,6 +1,6 @@
 const express = require('express');
 const {User} = require("../db");
-const csrf = require('csurf');
+const csrf = require('@dr.pogodin/csurf');
 const bodyParser = require('body-parser');
 const {validate_session} = require("../libs/validate_session.mjs");
 
