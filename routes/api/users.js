@@ -8,8 +8,18 @@ const router = express.Router();
 // List users (omit password)
 router.get('/', validate_session, async (req, res) => {
 	try {
-		const users = await User.findAll({ attributes: ['id', 'username', 'createdAt', 'updatedAt'] });
-		return res.json({ success: true, data: users });
+		const users = await User.findAll({ attributes: ['id', 'username', 'secret_2fa', 'createdAt', 'updatedAt'] });
+		let userData = [];
+		for (let user of users) {
+			userData.push({
+				id: user.id,
+				username: user.username,
+				secret_2fa: parseInt(user.id) === parseInt(req.user.id) ? user.secret_2fa : !!user.secret_2fa,
+				createdAt: user.createdAt,
+				updatedAt: user.updatedAt
+			});
+		}
+		return res.json({ success: true, data: userData });
 	} catch (e) {
 		logger.error('Error fetching users:', e);
 		return res.json({ success: false, error: String(e) });
@@ -72,6 +82,23 @@ router.post('/:id/password', validate_session, async (req, res) => {
 		return res.json({ success: true });
 	} catch (e) {
 		logger.error('Error changing password:', e);
+		return res.json({ success: false, error: String(e) });
+	}
+});
+
+// Reset 2FA authentication
+router.post('/:id/reset2fa', validate_session, async (req, res) => {
+	const id = req.params.id;
+
+	try {
+		const user = await User.findByPk(id);
+		if (!user) return res.json({ success: false, error: 'User not found' });
+		// Clearing the 2FA secret to force re-setup
+		user.secret_2fa = null;
+		await user.save();
+		return res.json({ success: true });
+	} catch (e) {
+		logger.error('Error resetting 2FA:', e);
 		return res.json({ success: false, error: String(e) });
 	}
 });

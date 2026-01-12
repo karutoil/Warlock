@@ -110,6 +110,7 @@ app.use('/application/install', require('./routes/application_install'));
 app.use('/application/backups', require('./routes/application_backups'));
 app.use('/application/configure', require('./routes/application_configure'));
 app.use('/settings', require('./routes/settings'));
+app.use('/2fa-setup', require('./routes/2fa-setup'));
 
 
 /***************************************************************

@@ -350,6 +350,12 @@ h4 {
 	margin-left: 1rem;
 }
 
+#qrcode img {
+	padding: 1rem;
+	background-color: white;
+	margin: 0 auto;
+}
+
 
 
 

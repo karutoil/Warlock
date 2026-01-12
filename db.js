@@ -14,6 +14,10 @@ const User = sequelize.define('User', {
 	},
 	password: {
 		type: DataTypes.STRING
+	},
+	secret_2fa: {
+		type: DataTypes.STRING,
+		allowNull: true
 	}
 }, {
 	hooks: {

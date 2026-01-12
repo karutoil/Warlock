@@ -263,6 +263,8 @@ if [ ! -e "$ENV_FILE" ]; then
 PORT=3077
 NODE_ENV=production
 SESSION_SECRET=$SECRET
+SKIP_AUTHENTICATION=false
+SKIP_2FA=false
 ENV
 	if [ "$SERVICE_USER" != "root" ]; then
 		chown "$SERVICE_USER":"$SERVICE_USER" "$ENV_FILE"
@@ -365,7 +367,7 @@ echo "Recent journal entries (last 50 lines):"
 journalctl -u warlock.service -n 50 --no-pager || true
 
 echo "You can access the Warlock web interface at:"
-if [ "$FQDN" != "_" ]; then
+if [ "$FQDN" == "_" ]; then
 	for IP in $(hostname -I); do
 		echo "http://$IP/"
 	done

@@ -45,6 +45,14 @@
 					<input name="password" type="password" id="admin-password" placeholder="Enter password">
 				</div>
 
+				<% if (twofactor) { %>
+					<div class="form-group">
+						<label for="authcode">2FA Authentication Code</label>
+						<input name="authcode" type="number" id="authcode" placeholder="123456" maxlength="6" pattern="\d{6}">
+						<p class="form-help-text">Enter the generated 6-digit code as displayed in your authentication application, (if you have setup 2FA)</p>
+					</div>
+				<% } %>
+
 				<button type="submit" class="action-save">Login</button>
 			</form>
 		</div>

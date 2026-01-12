@@ -3,6 +3,8 @@ const btnCreateUser = document.getElementById('btnCreateUser');
 const userModal = document.getElementById('userModal');
 const changePasswordModal = document.getElementById('changePasswordModal');
 const userDeleteModal = document.getElementById('userDeleteModal');
+const user2faModal = document.getElementById('user2faModal');
+const confirmUserReset2faBtn = document.getElementById('confirmUserReset2faBtn');
 
 function closeModal(el) { if (!el) return; el.classList.remove('show'); }
 function openModal(el) { if (!el) return; el.classList.add('show'); }
@@ -15,23 +17,30 @@ async function loadUsers() {
 		if (!data.success) throw new Error(data.error || 'Failed to load users');
 		const users = data.data || [];
 		if (users.length === 0) {
-			usersTableBody.innerHTML = '<tr><td colspan="3">No users configured.</td></tr>';
+			usersTableBody.innerHTML = '<tr><td colspan="4">No users configured.</td></tr>';
 			return;
 		}
 		usersTableBody.innerHTML = '';
 		users.forEach(u => {
 			const tr = document.createElement('tr');
-			tr.innerHTML = `<td>${u.username}</td><td>${new Date(u.createdAt).toLocaleString()}</td><td>
-				<button class="action-edit" data-id="${u.id}">Edit</button>
-				<button class="action-password" data-id="${u.id}">Password</button>
-				<button class="action-remove" data-id="${u.id}">Delete</button>
-			</td>`;
+			tr.innerHTML = `<td>${u.username}</td>
+<td>${twofactor ? (u.secret_2fa ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>') : 'N/A'}</td>
+<td>${new Date(u.createdAt).toLocaleString()}</td>
+<td>
+	<div class="button-group">
+		<button class="action-edit" data-id="${u.id}">Edit</button>
+		<button class="action-password" data-id="${u.id}">Password</button>
+		${twofactor && u.secret_2fa ? '<button class="action-2fa" data-id="' + u.id + '" data-secret="' + u.secret_2fa + '">2FA</button>' : ''}
+		<button class="action-remove" data-id="${u.id}">Delete</button>
+	</div>
+</td>`;
 			usersTableBody.appendChild(tr);
 		});
 		// attach handlers
 		document.querySelectorAll('.action-edit').forEach(btn => btn.addEventListener('click', onEditUser));
 		document.querySelectorAll('.action-password').forEach(btn => btn.addEventListener('click', onChangePassword));
 		document.querySelectorAll('.action-remove').forEach(btn => btn.addEventListener('click', onDeleteUser));
+		document.querySelectorAll('.action-2fa').forEach(btn => btn.addEventListener('click', on2faUser));
 	} catch (e) {
 		usersTableBody.innerHTML = `<tr><td colspan="3">Error: ${e.message}</td></tr>`;
 		showToast('error', `Failed to load users: ${e.message}`);
@@ -60,6 +69,34 @@ function onDeleteUser(e) {
 	const id = e.currentTarget.dataset.id;
 	document.getElementById('delUserId').value = id;
 	openModal(userDeleteModal);
+}
+
+function on2faUser(e) {
+	const id = e.currentTarget.dataset.id,
+		secret = e.currentTarget.dataset.secret,
+		confirmResetBtn = document.getElementById('confirmUserReset2faBtn'),
+		ownInfo = document.getElementById('own-user-2fa'),
+		otherInfo = document.getElementById('other-user-2fa'),
+		qrcode = document.getElementById("qrcode");
+
+	confirmResetBtn.dataset.userid = id;
+	if (secret === 'true') {
+		ownInfo.style.display = 'none';
+		otherInfo.style.display = 'block';
+	}
+	else {
+		ownInfo.style.display = 'block';
+		otherInfo.style.display = 'none';
+
+		if (qrcode.querySelector('img') === null) {
+			document.getElementById('own-2fa-secret').innerText = secret;
+			new QRCode(
+				qrcode,
+				`otpauth://totp/Warlock:${window.location.hostname }?secret=${secret}&issuer=Warlock`
+			);
+		}
+	}
+	openModal(user2faModal);
 }
 
 // Create user button
@@ -132,6 +169,20 @@ document.getElementById('confirmDeleteUserBtn').addEventListener('click', async 
 		await loadUsers();
 	} catch (e) {
 		showToast('error', `Failed to delete user: ${e.message}`);
+	}
+});
+
+confirmUserReset2faBtn.addEventListener('click', async () => {
+	const id = confirmUserReset2faBtn.dataset.userid;
+	try {
+		const res = await fetch(`/api/users/${id}/reset2fa`, { method: 'POST' });
+		const data = await res.json();
+		if (!data.success) throw new Error(data.error || 'Failed to reset');
+		showToast('success', 'Reset user two-factor authentication');
+		closeModal(user2faModal);
+		await loadUsers();
+	} catch (e) {
+		showToast('error', `Failed to reset user: ${e.message}`);
 	}
 });
 

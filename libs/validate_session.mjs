@@ -1,7 +1,7 @@
 import { User } from '../db.js';
 
 export const validate_session = (req, res, next) => {
-	if (process.env.SKIP_AUTHENTICATION) {
+	if (process.env.SKIP_AUTHENTICATION === 'true' || process.env.SKIP_AUTHENTICATION === '1') {
 		// If authentication is skipped, attach a default user object
 		req.user = {
 			id: 1,
@@ -22,6 +22,22 @@ export const validate_session = (req, res, next) => {
 					username: user.username,
 					// Add other non-sensitive fields as needed
 				};
+
+				// Redirect to a 2FA setup page if 2FA is not configured and we're not already on /2fa-setup
+				if (!(process.env.SKIP_2FA === 'true' || process.env.SKIP_2FA === '1')) {
+					if (!user.secret_2fa && req.baseUrl !== '/2fa-setup') {
+						// User has not activated 2FA yet, redirect to setup page
+						return res.redirect('/2fa-setup');
+					}
+
+					// Check to see if the 2fa successful flag is set in the session for users with 2FA enabled
+					if (!req.session.twofa_authenticated && req.baseUrl !== '/2fa-setup') {
+						req.session.destroy(() => {
+							return res.redirect('/login');
+						});
+					}
+				}
+
 				return next();
 			} else {
 				// User not found, destroy session and redirect to login

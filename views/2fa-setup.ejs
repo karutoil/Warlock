@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Warlock - Setup 2FA</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+	<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="/assets/frontend.css">
+	<link rel="stylesheet" href="/assets/themes.css">
+	<script src="/assets/common.js"></script>
+	<script src="/assets/qrcode.min.js" type="text/javascript" charset="utf-8"></script>
+</head>
+<body>
+
+<div class="main-container" style="grid-template-columns: 1fr; max-width: 800px;">
+	<main class="content-area">
+		<div class="content-header">
+			<div class="content-header-inner">
+				<h2>
+					<i class="fas fa-user"></i>
+					Setup Two-Factor Authentication
+				</h2>
+				<p>Please set up 2FA to complete your account creation.</p>
+			</div>
+		</div>
+
+		<div class="content-body">
+			<% if (typeof(error) !== 'undefined') { %>
+				<div class="error-message">
+					<i class="fas fa-exclamation-triangle"></i>
+					<strong>Error:</strong> <%= error %>
+				</div>
+			<% } %>
+
+			<form action="/2fa-setup" method="POST">
+				<input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+				<div class="info-message">
+					<p>
+						To help secure your servers, please use a Two-Factor Authentication (2FA) app such as Google Authenticator or Authy
+						to provide more user security.<br/><br/>
+						Please scan the QR code below with your 2FA application followed by the generated code once added to verify your app.
+						<br/><br/>
+						Alternatively, you can manually enter this code into your 2FA application: <br/>
+						<strong><%= secret_2fa %></strong>
+					</p>
+				</div>
+
+				<div id="qrcode"></div>
+
+
+				<div class="info-message">
+					<p>
+						Once created, enter your 6-digit 2FA code below to verify and complete your account setup.
+					</p>
+				</div>
+
+				<div class="form-group">
+					<label for="authcode">6-digit Code</label>
+					<input name="authcode" type="number" id="authcode" placeholder="123456" maxlength="6" pattern="\d{6}" required>
+					<p class="form-help-text">Enter the generated 6-digit code as displayed in your authentication application.</p>
+				</div>
+
+				<button type="submit" class="action-save">Save 2FA</button>
+			</form>
+		</div>
+	</main>
+</div>
+
+<%- include('partials/theme-selector.ejs') %>
+
+<script>
+	// Setup the QR code
+	new QRCode(
+		document.getElementById("qrcode"),
+		'otpauth://totp/Warlock:<%= encodeURIComponent(hostname) %>?secret=<%= encodeURIComponent(secret_2fa) %>&issuer=Warlock'
+	);
+</script>
+
+</body>
+</html>

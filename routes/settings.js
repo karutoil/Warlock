@@ -12,7 +12,12 @@ try {
 }
 
 router.get('/', validate_session, (req, res) => {
-	res.render('settings', { version });
+	res.render(
+		'settings', {
+			version,
+			twofactor: (!(process.env.SKIP_2FA === 'true' || process.env.SKIP_2FA === '1')),
+		}
+	);
 });
 
 module.exports = router;

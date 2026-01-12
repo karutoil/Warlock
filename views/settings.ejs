@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/assets/frontend.css">
     <link rel="stylesheet" href="/assets/themes.css">
     <script src="/assets/common.js"></script>
+    <script src="/assets/qrcode.min.js" type="text/javascript" charset="utf-8"></script>
 </head>
 <body>
 
@@ -36,7 +37,12 @@
             <div id="usersContainer">
                 <table class="table users-table">
                     <thead>
-                        <tr><th>Username</th><th>Created</th><th>Actions</th></tr>
+                        <tr>
+                            <th>Username</th>
+                            <th title="2-Factor Authentication">2FA</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
                     </thead>
                     <tbody id="usersTableBody">
                         <tr><td colspan="3">Loading...</td></tr>
@@ -136,8 +142,41 @@
     </div>
 </div>
 
+<!-- Delete Confirmation Modal -->
+<div id="user2faModal" class="modal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Two Factor Authentication</h3>
+            <button class="modal-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div id="own-user-2fa">
+                <div class="info-message">
+                    <p>
+                        Your account has 2FA enabled and authorized.  Below is your secret key if you would like to add a new authenticator.<br/><br/>
+                        Key: <strong id="own-2fa-secret"></strong>
+                    </p>
+                </div>
+
+                <div id="qrcode"></div>
+            </div>
+            <div id="other-user-2fa">
+                <div class="info-message">
+                    <p>This user has 2FA enabled and activated.  You can reset their authentication to allow them to set up new authorization.</p>
+                </div>
+
+                <button id="confirmUserReset2faBtn">Reset 2FA</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <%- include('partials/theme-selector.ejs') %>
 
+<script>
+    const twofactor = <%= twofactor ? 'true' : 'false' %>;
+</script>
 <script src="/assets/settings.js"></script>
 </body>
 </html>
