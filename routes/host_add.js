@@ -6,6 +6,7 @@ const {Host} = require("../db");
 const {get_ssh_key} = require("../libs/get_ssh_key.mjs");
 const {exec} = require('child_process');
 const {hostPostAdd} = require("../libs/host_post_add.mjs");
+const cache = require("../libs/cache.mjs");
 
 const router = express.Router();
 const csrfProtection = csrf({ cookie: true });
@@ -83,6 +84,7 @@ router.post('/', validate_session, parseForm, csrfProtection, (req, res) => {
 					.then(newHost => {
 						// Perform any operations required on the host
 						hostPostAdd(ip).then(() => {
+							cache.default.set('all_applications', null, 1); // Invalidate cache
 							return res.redirect('/hosts');
 						}).catch(e => {
 							console.error('Error during post-add operations:', e);

@@ -3,6 +3,7 @@ const {validate_session} = require("../libs/validate_session.mjs");
 const csrf = require('@dr.pogodin/csurf');
 const bodyParser = require('body-parser');
 const {Host} = require("../db");
+const cache = require("../libs/cache.mjs");
 
 const router = express.Router();
 const csrfProtection = csrf({ cookie: true });
@@ -38,6 +39,7 @@ router.post('/', parseForm, csrfProtection, validate_session, (req, res) => {
         if (!deletedCount) {
             return res.render('host_delete', { error: 'Host not found or already deleted.', ip });
         }
+        cache.default.set('all_applications', null, 1); // Invalidate cache
         return res.redirect('/hosts');
     }).catch(err => {
         console.error('Error deleting host:', err);
