@@ -23,6 +23,25 @@
   image: images/asa-1920x1080.webp
   icon: images/ark-128x128.webp
   thumbnail: images/ark_460x215.webp
+- guid: f73feed8-7202-0747-b5ba-efd8e8a0b002
+  title: Hytale
+  source: github
+  repo: BitsNBytes25/Hytale-Installer
+  installer: dist/installer.sh
+  author: Charlie Powell <cdp1337@bitsnbytes.dev>
+  category: Game Server
+  supports:
+    - "Debian 12, 13"
+    - "Ubuntu 24.04"
+  syntax:
+    - "--uninstall  - Perform an uninstallation"
+    - "--dir=<src> - Use a custom installation directory instead of the default (optional)"
+    - "--skip-firewall  - Do not install or configure a system firewall"
+    - "--non-interactive  - Run the installer in non-interactive mode (useful for scripted installs)"
+    - "--branch=<str> - Use a specific branch of the management script repository DEFAULT=main"
+  image: media/content-upper-new-1920.jpg
+  icon: media/logo-h.png
+  thumbnail: media/logo.png
 - guid: 700798f0-35be-bc6c-da84-62c510dfbd06
   title: Minecraft
   source: github
