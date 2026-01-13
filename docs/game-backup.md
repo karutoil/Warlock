@@ -9,6 +9,11 @@ sidebar:
     layout: widgets/pages-nav-sidebar
     permalink: "~ /projects/warlock/.*"
     sort: order
+  - widget: cta
+    href: https://github.com/BitsNBytes25/Warlock
+    text: View on GitHub
+image:
+  src: media/warlock-game-backup.webp
 ---
 
 # Game Backups

@@ -8,6 +8,12 @@ sidebar:
     layout: widgets/pages-nav-sidebar
     permalink: "~ /projects/warlock/.*"
     sort: order
+    title: Project Navigation
+  - widget: cta
+    href: https://github.com/BitsNBytes25/Warlock
+    text: View on GitHub
+image:
+  src: media/warlock-dashboard.webp
 ---
 
 # Warlock Game Server Manager
@@ -19,3 +25,5 @@ To maximize performance, it attempts to use native tools and libraries where pos
 so no Docker containers are required.
 
 For games which do not natively support Linux servers, Valve's or Glorious Eggroll's Proton is used.
+
+![Warlock Dashboard](media/warlock-dashboard.webp)

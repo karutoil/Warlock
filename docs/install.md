@@ -8,6 +8,12 @@ sidebar:
     layout: widgets/pages-nav-sidebar
     permalink: "~ /projects/warlock/.*"
     sort: order
+    title: Project Navigation
+  - widget: cta
+    href: https://github.com/BitsNBytes25/Warlock
+    text: View on GitHub
+image:
+  src: media/warlock-empty-dashboard.webp
 ---
 
 # Installation
