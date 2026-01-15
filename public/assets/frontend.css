@@ -1414,8 +1414,63 @@ button.link-control span {
 
 .file-viewer-card {
 	display: flex;
-	height: calc(100vh - 80px);
+	flex: 1;
+	min-width: 0;
 	flex-direction: column;
+	overflow: hidden;
+}
+
+.file-viewer-card .card-header {
+	display: flex !important;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: 1rem;
+	padding: 1rem;
+	flex-shrink: 0;
+	min-height: fit-content;
+	border-bottom: 1px solid rgba(0, 150, 255, 0.1);
+}
+
+.file-viewer-card .card-header h2 {
+	flex-shrink: 0;
+	margin: 0;
+	font-size: 1.25rem;
+	white-space: nowrap;
+}
+
+.file-viewer-card .card-header > div:last-child {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	flex-wrap: wrap;
+	flex: 1;
+	justify-content: flex-end;
+}
+
+.file-viewer-card .search-bar {
+	display: flex !important;
+	align-items: center;
+	gap: 0.5rem;
+	flex-shrink: 0;
+	flex-wrap: nowrap;
+}
+
+.file-viewer-card .search-bar .search-input {
+	min-width: 150px;
+	flex-shrink: 0;
+}
+
+.file-viewer-card #viewerActions {
+	display: flex !important;
+	gap: 0.5rem;
+	flex-shrink: 0;
+	flex-wrap: nowrap;
+}
+
+.file-viewer-card #viewerActions button {
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 .file-viewer-card .file-preview {
 	display: none;

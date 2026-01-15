@@ -656,6 +656,7 @@ function editFile(fileData) {
 	viewerSearchBar.style.display = 'flex';
 	viewerActions.style.display = 'flex';
 
+	saveFileBtn.style.display = 'block';
 	downloadFileBtn.style.display = 'none';
 	restoreBackupFileBtn.style.display = 'none';
 
