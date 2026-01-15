@@ -138,7 +138,7 @@ function initializeCodeMirror() {
 		matchBrackets: true,
 		autoCloseBrackets: true,
 		showCursorWhenSelecting: true,
-		viewportMargin: Infinity,
+		viewportMargin: 10,
 		extraKeys: {
 			'Ctrl-S': function() {
 				saveFile();
