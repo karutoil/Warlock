@@ -1420,15 +1420,15 @@ function updateViewerSearchHighlight() {
 		const matchIndex = viewerMatches[viewerCurrentMatch];
 
 		if (codeMirrorEditor) {
-			// Use CodeMirror's find functionality
-			const line = codeMirrorEditor.getValue().substr(0, matchIndex).split('\n').length - 1;
-			const ch = matchIndex - codeMirrorEditor.getValue().substr(0, matchIndex).lastIndexOf('\n') - 1;
+			// Use CodeMirror's index-to-position helper for accurate selection
+			const from = codeMirrorEditor.posFromIndex(matchIndex),
+			      to = codeMirrorEditor.posFromIndex(matchIndex + searchTerm.length);
 			
 			codeMirrorEditor.focus();
-			codeMirrorEditor.setSelection({ line, ch }, { line, ch: ch + searchTerm.length });
+			codeMirrorEditor.setSelection(from, to);
 			
 			// Scroll to selection
-			codeMirrorEditor.scrollIntoView({ line, ch });
+			codeMirrorEditor.scrollIntoView(from);
 		} else {
 			// Fallback to textarea
 			editorTextarea.focus();
