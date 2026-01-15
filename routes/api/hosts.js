@@ -31,10 +31,12 @@ router.get('/', validate_session, (req, res) => {
 					'echo "KERNEL: $(uname -a)"; ' +
 					'echo "UPTIME: $(uptime)"; ' +
 					'echo "THREAD_COUNT: $(nproc)"; ' +
+				'echo "PUBLIC_IPV4: $(curl -4 -s ifconfig.me 2>/dev/null || wget -qO- ifconfig.me 2>/dev/null || echo)"; ' +
 					'echo "CPU_COUNT: $(egrep "^physical id" /proc/cpuinfo | uniq | wc -l)"; ' +
-					'echo "CPU_MODEL: $(egrep "^model name" /proc/cpuinfo | head -n1 | sed "s#.*: ##")"; ' +
-					'echo "MEMORY_STATS: $(free | grep "^Mem:" | tr -s " " | cut -d" " -f2,3,4,5,6,7)"; ' +
-					'echo "TOP_CPU_PROCESSES:"; ' +
+				'echo "CPU_CORES_PER_SOCKET: $(egrep "^cpu cores" /proc/cpuinfo | head -n1 | sed "s#.*: ##")"; ' +
+				'echo "CPU_MODEL: $(egrep "^model name" /proc/cpuinfo | head -n1 | sed "s#.*: ##")"; ' +
+				'echo "MEMORY_STATS: $(free | grep "^Mem:" | tr -s " " | cut -d" " -f2,3,4,5,6,7)"; ' +
+				'echo "TOP_CPU_PROCESSES:"; ' +
 					'ps aux --sort=-%cpu | head -6 | tail -5 | awk "{print \\$11}"; ' +
 					'echo "TOP_MEMORY_PROCESSES:"; ' +
 					'ps aux --sort=-%mem | head -6 | tail -5 | awk "{print \\$11}"; ' +
@@ -52,6 +54,7 @@ router.get('/', validate_session, (req, res) => {
 			results.forEach(result => {
 				let hostInfo = {
 					ip: '',
+					public_ip: '',
 					connected: false,
 					hostname: '',
 					os: {
@@ -95,7 +98,10 @@ router.get('/', validate_session, (req, res) => {
 						else if (group === null && line.startsWith('THREAD_COUNT: ')) {
 							hostInfo.cpu.threads = parseInt(line.replace('THREAD_COUNT:', '').trim());
 						}
-						else if (group === null && line.startsWith('CPU_COUNT: ')) {
+						else if (group === null && line.startsWith('PUBLIC_IPV4: ')) {
+					hostInfo.public_ip = line.replace('PUBLIC_IPV4:', '').trim();
+				}
+				else if (group === null && line.startsWith('CPU_COUNT: ')) {
 							hostInfo.cpu.count = parseInt(line.replace('CPU_COUNT:', '').trim());
 						}
 						else if (group === null && line.startsWith('CPU_MODEL: ')) {
@@ -165,6 +171,21 @@ router.get('/', validate_session, (req, res) => {
 							}
 						}
 					});
+
+					// Parse CPU_CORES_PER_SOCKET from raw output if present
+					const cpuCoresLine = lines.find(l => l && l.startsWith('CPU_CORES_PER_SOCKET:'));
+					if (cpuCoresLine) {
+						hostInfo.cpu.cores_per_socket = parseInt(cpuCoresLine.replace('CPU_CORES_PER_SOCKET:', '').trim()) || 0;
+					}
+					// Derive physical core count when possible
+					if (hostInfo.cpu.cores_per_socket && hostInfo.cpu.count) {
+						hostInfo.cpu.physical_cores = hostInfo.cpu.cores_per_socket * hostInfo.cpu.count;
+					} else if (hostInfo.cpu.threads && hostInfo.cpu.count && hostInfo.cpu.count > 0) {
+						// fallback estimate
+						hostInfo.cpu.physical_cores = Math.floor(hostInfo.cpu.threads / hostInfo.cpu.count);
+					} else {
+						hostInfo.cpu.physical_cores = 0;
+					}
 
 					if (hostInfo.cpu.threads > 0 && hostInfo.cpu.load1m > 0) {
 						hostInfo.cpu.usage = parseFloat(((hostInfo.cpu.load1m / hostInfo.cpu.threads) * 100).toFixed(2));

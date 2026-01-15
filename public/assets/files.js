@@ -65,10 +65,93 @@ const fileViewerCard = document.querySelector('.file-viewer-card'),
 	filePreviewContent = document.getElementById('filePreviewContent'),
 	fileEditorContent = document.getElementById('fileEditorContent'),
 	editorTextarea = document.getElementById('editorTextarea'),
-	editorInfo = document.getElementById('editorInfo');
+	editorInfo = document.getElementById('editorInfo'),
+	editorContainer = document.getElementById('editorContainer');
+
+// CodeMirror instance
+let codeMirrorEditor = null;
 
 // Initialize
 currentPathEl.textContent = currentPath;
+
+/**
+ * Detect file syntax mode based on file extension
+ * @param {string} filename - The name of the file
+ * @returns {string} - CodeMirror mode string
+ */
+function detectSyntaxMode(filename) {
+	const ext = filename.split('.').pop().toLowerCase();
+	
+	const modeMap = {
+		'js': 'javascript',
+		'jsx': 'javascript',
+		'ts': 'javascript',
+		'tsx': 'javascript',
+		'css': 'css',
+		'scss': 'text/x-scss',
+		'less': 'text/x-less',
+		'html': 'htmlmixed',
+		'htm': 'htmlmixed',
+		'xml': 'xml',
+		'php': 'application/x-httpd-php',
+		'py': 'python',
+		'sh': 'application/x-sh',
+		'bash': 'application/x-sh',
+		'zsh': 'application/x-sh',
+		'yml': 'yaml',
+		'yaml': 'yaml',
+		'json': 'application/json',
+		'jsonc': 'application/json',
+		'conf': 'text/x-nginx-conf',
+		'nginx': 'text/x-nginx-conf',
+		'dockerfile': 'text/x-dockerfile',
+		'docker': 'text/x-dockerfile',
+		'sql': 'text/x-sql',
+		'rb': 'text/x-ruby',
+		'go': 'text/x-go',
+		'java': 'text/x-java',
+		'c': 'text/x-csrc',
+		'cpp': 'text/x-c++src',
+		'h': 'text/x-csrc',
+		'md': 'text/x-markdown',
+		'markdown': 'text/x-markdown'
+	};
+	
+	return modeMap[ext] || 'null';
+}
+
+/**
+ * Initialize CodeMirror editor
+ */
+function initializeCodeMirror() {
+	if (!editorContainer) return;
+	
+	codeMirrorEditor = CodeMirror(editorContainer, {
+		lineNumbers: true,
+		mode: 'null',
+		theme: 'material-darker',
+		indentUnit: 4,
+		tabSize: 4,
+		indentWithTabs: false,
+		lineWrapping: true,
+		styleActiveLine: true,
+		matchBrackets: true,
+		autoCloseBrackets: true,
+		showCursorWhenSelecting: true,
+		viewportMargin: 10,
+		extraKeys: {
+			'Ctrl-S': function() {
+				saveFile();
+			},
+			'Cmd-S': function() {
+				saveFile();
+			}
+		}
+	});
+	
+	// Update stats when editor content changes
+	codeMirrorEditor.on('change', updateEditorStats);
+}
 
 /**
  * Show the UI when loading a file or directory
@@ -551,17 +634,29 @@ function editFile(fileData) {
 	console.log(fileData);
 	currentEditFile = { path: fileData.path, name: fileData.name };
 
+	// Initialize CodeMirror if not already initialized
+	if (!codeMirrorEditor) {
+		initializeCodeMirror();
+	}
+
 	// Hide empty state and preview, show editor
 	hideLoading();
 	viewerEmptyState.style.display = 'none';
 	filePreviewContent.style.display = 'none';
 	fileEditorContent.style.display = 'flex';
 
+	// Detect and set syntax mode based on file extension
+	const syntaxMode = detectSyntaxMode(fileData.name);
+	codeMirrorEditor.setOption('mode', syntaxMode);
+	codeMirrorEditor.setValue(fileData.content);
+	codeMirrorEditor.clearHistory();
+
 	// Update title and show search bar and actions
 	viewerTitle.innerHTML = `<i class="fas fa-edit"></i> ${currentEditFile.name}`;
 	viewerSearchBar.style.display = 'flex';
 	viewerActions.style.display = 'flex';
 
+	saveFileBtn.style.display = 'block';
 	downloadFileBtn.style.display = 'none';
 	restoreBackupFileBtn.style.display = 'none';
 
@@ -570,17 +665,26 @@ function editFile(fileData) {
 	saveFileBtn.disabled = false;
 	viewerSearchPrev.classList.add('disabled');
 	viewerSearchNext.classList.add('disabled');
-	editorInfo.textContent = 'Ready to edit';
+	editorInfo.textContent = `Ready to edit • Syntax: ${syntaxMode !== 'null' ? syntaxMode : 'plain text'}`;
 	updateEditorStats();
 }
 
 function updateEditorStats() {
-	const editorTextarea = document.getElementById('editorTextarea');
 	const editorStats = document.getElementById('editorStats');
-	const content = editorTextarea.value;
-	const lines = content.split('\n').length;
-	const chars = content.length;
-	const words = content.trim() ? content.trim().split(/\s+/).length : 0;
+	let content, lines, chars, words;
+	
+	// Use CodeMirror if available, otherwise fall back to textarea
+	if (codeMirrorEditor) {
+		content = codeMirrorEditor.getValue();
+		lines = codeMirrorEditor.lineCount();
+	} else {
+		const editorTextarea = document.getElementById('editorTextarea');
+		content = editorTextarea.value;
+		lines = content.split('\n').length;
+	}
+	
+	chars = content.length;
+	words = content.trim() ? content.trim().split(/\s+/).length : 0;
 
 	editorStats.textContent = `${lines} lines, ${words} words, ${chars} characters`;
 }
@@ -590,20 +694,27 @@ async function saveFile() {
 
 	const saveFileBtn = document.getElementById('saveFileBtn');
 	const editorInfo = document.getElementById('editorInfo');
-	const editorTextarea = document.getElementById('editorTextarea');
 
 	saveFileBtn.disabled = true;
 	saveFileBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 	editorInfo.textContent = 'Saving file...';
 
 	try {
+		// Get content from CodeMirror if available, otherwise from textarea
+		let content;
+		if (codeMirrorEditor) {
+			content = codeMirrorEditor.getValue();
+		} else {
+			content = document.getElementById('editorTextarea').value;
+		}
+
 		const response = await fetch(`/api/file/${host}?path=${currentEditFile.path}`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
-				content: editorTextarea.value
+				content: content
 			})
 		});
 
@@ -646,6 +757,13 @@ function closeViewer() {
 	viewerTitle.innerHTML = '<i class="fas fa-file"></i> File Viewer';
 
 	currentEditFile = null;
+	
+	// Refresh CodeMirror if available
+	if (codeMirrorEditor) {
+		setTimeout(() => {
+			codeMirrorEditor.refresh();
+		}, 0);
+	}
 }
 
 // New functionality functions
@@ -1228,8 +1346,14 @@ function performViewerSearchEvent(e) {
 		viewerCurrentMatch = 0;
 		updateViewerSearchHighlight();
 	} else {
-		// Search in editor textarea
-		const textContent = editorTextarea.value;
+		// Search in editor
+		let textContent;
+		if (codeMirrorEditor) {
+			textContent = codeMirrorEditor.getValue();
+		} else {
+			textContent = editorTextarea.value;
+		}
+		
 		const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
 		const matches = [...textContent.matchAll(regex)];
 		viewerMatches = matches.map(m => m.index);
@@ -1271,7 +1395,6 @@ document.getElementById('viewerSearchPrev').addEventListener('click', () => {
 
 function updateViewerSearchHighlight() {
 	const previewContent = document.getElementById('previewContent');
-	const editorTextarea = document.getElementById('editorTextarea');
 	const filePreviewContent = document.getElementById('filePreviewContent');
 	const isPreviewMode = filePreviewContent.style.display !== 'none';
 
@@ -1291,18 +1414,31 @@ function updateViewerSearchHighlight() {
 			}
 		});
 	} else {
-		// Highlight in editor textarea
+		// Highlight in editor
 		const searchInput = document.getElementById('viewerSearch');
 		const searchTerm = searchInput.value;
 		const matchIndex = viewerMatches[viewerCurrentMatch];
 
-		editorTextarea.focus();
-		editorTextarea.setSelectionRange(matchIndex, matchIndex + searchTerm.length);
+		if (codeMirrorEditor) {
+			// Use CodeMirror's index-to-position helper for accurate selection
+			const from = codeMirrorEditor.posFromIndex(matchIndex),
+			      to = codeMirrorEditor.posFromIndex(matchIndex + searchTerm.length);
+			
+			codeMirrorEditor.focus();
+			codeMirrorEditor.setSelection(from, to);
+			
+			// Scroll to selection
+			codeMirrorEditor.scrollIntoView(from);
+		} else {
+			// Fallback to textarea
+			editorTextarea.focus();
+			editorTextarea.setSelectionRange(matchIndex, matchIndex + searchTerm.length);
 
-		// Scroll to selection
-		const lineHeight = parseFloat(getComputedStyle(editorTextarea).lineHeight);
-		const lines = editorTextarea.value.substr(0, matchIndex).split('\n').length;
-		editorTextarea.scrollTop = (lines - 1) * lineHeight - editorTextarea.clientHeight / 2;
+			// Scroll to selection
+			const lineHeight = parseFloat(getComputedStyle(editorTextarea).lineHeight);
+			const lines = editorTextarea.value.substr(0, matchIndex).split('\n').length;
+			editorTextarea.scrollTop = (lines - 1) * lineHeight - editorTextarea.clientHeight / 2;
+		}
 	}
 }
 
