@@ -37,7 +37,9 @@ function renderHost(hostData, isCompatible, compatibleNotice) {
 	// CPU
 	const cpu = document.createElement('div');
 	cpu.className = 'metric-item metric-cpu';
-	cpu.innerHTML = `CPU: ${hostData.cpu.usage}%`;
+	const threads = hostData.cpu.threads || 0;
+	const physical = hostData.cpu.physical_cores || (hostData.cpu.cores_per_socket && hostData.cpu.count ? (hostData.cpu.cores_per_socket * hostData.cpu.count) : 0);
+	cpu.innerHTML = `CPU: ${hostData.cpu.usage}%<div class="cpu-cores-inline">${physical && physical>0 ? `${physical} cores / ${threads} threads` : `${threads} threads`}</div>`;
 	metricsContainer.appendChild(cpu);
 
 	// Memory
