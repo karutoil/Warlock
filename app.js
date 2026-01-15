@@ -57,7 +57,6 @@ const path = require('path');
 const dotenv = require('dotenv');
 
 const app = express();
-const PORT = process.env.PORT || 3077;
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const {logger} = require("./libs/logger.mjs");
@@ -138,8 +137,11 @@ app.use('/api/ports', require('./routes/api/ports'));
 app.use('/api/metrics', require('./routes/api/metrics'));
 
 
+const PORT = process.env.PORT || 3077;
+const HOST = process.env.IP || '127.0.0.1';
+
 // Start the server
-app.listen(PORT, '127.0.0.1', () => {
+app.listen(PORT, HOST, () => {
 	logger.info(`Listening on ${PORT}`);
 
 	// Ensure the sqlite database is up to date with the schema.

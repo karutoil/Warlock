@@ -260,6 +260,7 @@ mv "$TMP_UNIT" "$SERVICE_UNIT_PATH"
 if [ ! -e "$ENV_FILE" ]; then
 	SECRET="$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)"
 	cat > "$ENV_FILE" <<ENV
+IP=127.0.0.1
 PORT=3077
 NODE_ENV=production
 SESSION_SECRET=$SECRET
