@@ -6,6 +6,8 @@
     <title>Warlock - File Manager</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-darker.min.css">
     <link rel="stylesheet" href="/assets/frontend.css">
     <link rel="stylesheet" href="/assets/themes.css">
     <script src="/assets/common.js"></script>
@@ -140,7 +142,8 @@
                 
                 <!-- File Editor (for editing) -->
                 <div id="fileEditorContent" style="display: none; flex: 1; overflow: hidden; flex-direction: column;">
-                    <textarea id="editorTextarea" style="flex: 1; width: 100%; padding: 1.5rem; background: rgba(0, 0, 0, 0.5); color: #e2e8f0; border: none; font-family: 'Monaco', 'Menlo', monospace; font-size: 0.9rem; line-height: 1.6; resize: none; outline: none;" placeholder="File content will appear here..."></textarea>
+                    <div id="editorContainer" style="flex: 1; overflow: hidden;"></div>
+                    <textarea id="editorTextarea" style="display: none;" placeholder="File content will appear here..."></textarea>
                     <div style="padding: 0.75rem 1.5rem; background: rgba(0, 40, 80, 0.4); border-top: 1px solid rgba(0, 150, 255, 0.2); display: flex; justify-content: space-between; font-size: 0.85rem; color: #87ceeb;">
                         <span id="editorInfo">Ready to edit</span>
                         <span id="editorStats"></span>
@@ -370,5 +373,16 @@
 
 <%- include('partials/theme-selector.ejs') %>
 <script src="/assets/files.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/shell/shell.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/json/json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/nginx/nginx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/dockerfile/dockerfile.min.js"></script>
 </body>
 </html>

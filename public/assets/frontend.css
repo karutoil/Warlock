@@ -54,9 +54,9 @@
 	
 	/* Buttons - Modern Flat Design */
 	--button-active-shadow: rgba(99, 102, 241, 0.3);
-	--button: #1e293b;
-	--button-bg-1: #e2e8f0;
-	--button-bg-2: #cbd5e1;
+	--button: #ffffff;
+	--button-bg-1: #6366f1;
+	--button-bg-2: #4f46e5;
 	--button-shadow: rgba(0, 0, 0, 0.1);
 	
 	/* Action Buttons */
@@ -707,6 +707,11 @@ button.action-edit:hover, a.button.action-edit:hover {
 	box-shadow: 0 2px 8px var(--button-config-shadow);
 }
 
+button.action-configure i, button.action-configure span,
+button.action-edit i, button.action-edit span {
+	color: inherit;
+}
+
 button.action-create, a.button.action-create {
 	background: var(--button-create-bg-1);
 	color: var(--button-create);
@@ -714,6 +719,10 @@ button.action-create, a.button.action-create {
 button.action-create:hover, a.button.action-create:hover {
 	background: var(--button-create-bg-2);
 	box-shadow: 0 2px 8px var(--button-create-shadow);
+}
+
+button.action-create i, button.action-create span {
+	color: inherit;
 }
 
 button.action-start, a.button.action-start {
@@ -725,6 +734,10 @@ button.action-start:hover, a.button.action-start:hover {
 	box-shadow: 0 2px 8px var(--button-start-shadow);
 }
 
+button.action-start i, button.action-start span {
+	color: inherit;
+}
+
 button.action-stop, a.button.action-stop {
 	background: var(--button-stop-bg-1);
 	color: var(--button-stop);
@@ -732,6 +745,10 @@ button.action-stop, a.button.action-stop {
 button.action-stop:hover, a.button.action-stop:hover {
 	background: var(--button-stop-bg-2);
 	box-shadow: 0 2px 8px var(--button-stop-shadow);
+}
+
+button.action-stop i, button.action-stop span {
+	color: inherit;
 }
 
 button.action-browse, a.button.action-browse {
@@ -743,6 +760,10 @@ button.action-browse:hover, a.button.action-browse:hover {
 	box-shadow: 0 2px 8px var(--button-browse-shadow);
 }
 
+button.action-browse i, button.action-browse span {
+	color: inherit;
+}
+
 button.action-remove, a.button.action-remove {
 	background: var(--button-remove-bg-1);
 	color: var(--button-remove);
@@ -750,6 +771,10 @@ button.action-remove, a.button.action-remove {
 button.action-remove:hover, a.button.action-remove:hover {
 	background: var(--button-remove-bg-2);
 	box-shadow: 0 2px 8px var(--button-remove-shadow);
+}
+
+button.action-remove i, button.action-remove span {
+	color: inherit;
 }
 
 button.action-save, a.button.action-save {
@@ -761,6 +786,10 @@ button.action-save:hover, a.button.action-save:hover {
 	box-shadow: 0 2px 8px var(--button-save-shadow);
 }
 
+button.action-save i, button.action-save span {
+	color: inherit;
+}
+
 button.action-cancel, a.button.action-cancel {
 	background: var(--button-cancel-bg-1);
 	color: var(--button-cancel);
@@ -768,6 +797,10 @@ button.action-cancel, a.button.action-cancel {
 button.action-cancel:hover, a.button.action-cancel:hover {
 	background: var(--button-cancel-bg-2);
 	box-shadow: 0 2px 8px var(--button-cancel-shadow);
+}
+
+button.action-cancel i, button.action-cancel span {
+	color: inherit;
 }
 
 button.action-update, a.button.action-update {
@@ -779,6 +812,10 @@ button.action-update:hover, a.button.action-update:hover {
 	box-shadow: 0 2px 8px var(--button-update-shadow);
 }
 
+button.action-update i, button.action-update span {
+	color: inherit;
+}
+
 button.action-backup, a.button.action-backup {
 	background: var(--button-backup-bg-1);
 	color: var(--button-backup);
@@ -786,6 +823,12 @@ button.action-backup, a.button.action-backup {
 button.action-backup:hover, a.button.action-backup:hover {
 	background: var(--button-backup-bg-2);
 	box-shadow: 0 2px 8px var(--button-backup-shadow);
+}
+
+/* Ensure icon visibility in link-control buttons */
+button.link-control i,
+button.link-control span {
+	color: inherit;
 }
 
 /* Hologram loader */
@@ -1774,6 +1817,20 @@ button.action-backup:hover, a.button.action-backup:hover {
 	transition: all 0.2s ease;
 }
 
+.link-control button {
+	color: inherit;
+}
+
+button.link-control {
+	padding: 0.5rem 0.875rem;
+	border-radius: 6px;
+	border: none;
+	cursor: pointer;
+	font-weight: 500;
+	font-size: 0.875rem;
+	transition: all 0.2s ease;
+}
+
 .upload-progress {
 	text-align: center;
 }
@@ -2690,6 +2747,62 @@ button.action-backup:hover, a.button.action-backup:hover {
 	#toast-container { bottom: 12px; padding: 0 8px; }
 	.toast { min-width: 180px; font-size: 0.9rem; }
 }
+
+/* CodeMirror Editor Styling */
+#editorContainer {
+	height: 100%;
+	font-size: 0.9rem;
+}
+
+#editorContainer .CodeMirror {
+	height: 100% !important;
+	font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace !important;
+	font-size: 0.9rem !important;
+	line-height: 1.6 !important;
+	background: rgba(0, 0, 0, 0.5) !important;
+	color: #e2e8f0 !important;
+	border: none !important;
+}
+
+#editorContainer .CodeMirror-linenumber {
+	color: #64748b;
+	background: rgba(0, 0, 0, 0.3);
+}
+
+#editorContainer .CodeMirror-gutter {
+	background: rgba(0, 0, 0, 0.2);
+	border-right: 1px solid rgba(0, 150, 255, 0.1);
+}
+
+#editorContainer .CodeMirror-cursor {
+	border-left: 2px solid #0096ff;
+}
+
+#editorContainer .CodeMirror-selected {
+	background: rgba(0, 150, 255, 0.3);
+}
+
+#editorContainer .CodeMirror-line::selection,
+#editorContainer .CodeMirror-line > span::selection,
+#editorContainer .CodeMirror-line > span > span::selection {
+	background: rgba(0, 150, 255, 0.5);
+}
+
+#editorContainer .CodeMirror-activeline-background {
+	background: rgba(99, 102, 241, 0.1);
+}
+
+/* Syntax highlighting colors */
+#editorContainer .cm-string { color: #84e1bc !important; }
+#editorContainer .cm-number { color: #f59e0b !important; }
+#editorContainer .cm-atom { color: #f59e0b !important; }
+#editorContainer .cm-keyword { color: #6366f1 !important; }
+#editorContainer .cm-variable { color: #cbd5e1 !important; }
+#editorContainer .cm-property { color: #cbd5e1 !important; }
+#editorContainer .cm-comment { color: #64748b !important; }
+#editorContainer .cm-tag { color: #6366f1 !important; }
+#editorContainer .cm-attribute { color: #f59e0b !important; }
+
 
 @media (max-width: 480px) {
 	.header h1 {
