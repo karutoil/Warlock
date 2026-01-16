@@ -709,13 +709,11 @@ async function saveFile() {
 		}
 
 		const response = await fetch(`/api/file/${host}?path=${currentEditFile.path}`, {
-			method: 'POST',
+			method: 'PUT',
 			headers: {
-				'Content-Type': 'application/json'
+				'Content-Type': 'text/plain',
 			},
-			body: JSON.stringify({
-				content: content
-			})
+			body: content
 		});
 
 		const result = await response.json();
