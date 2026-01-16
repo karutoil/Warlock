@@ -39,7 +39,8 @@ export async function getAllApplications() {
 		logger.debug('getAllApplications: Loading application definitions from hosts');
 		Host.findAll().then(hosts => {
 			const hostList = hosts.map(host => host.ip),
-				cmd = 'for file in /var/lib/warlock/*.app; do if [ -f "$file" ]; then echo "$(basename "$file" ".app"):$(cat "$file")"; fi; done';
+				// Modified to capture instance information from filename pattern: guid.instance_id.app or guid.app
+				cmd = 'for file in /var/lib/warlock/*.app; do if [ -f "$file" ]; then basename=$(basename "$file" ".app"); echo "$basename:$(cat "$file")"; fi; done';
 
 			if (hostList.length === 0) {
 				logger.debug('getAllApplications: No hosts found in database.');
@@ -62,7 +63,13 @@ export async function getAllApplications() {
 
 							for (let line of stdout.split('\n')) {
 								if (line.trim()) {
-									let [guid, path] = line.split(':').map(s => s.trim());
+									let [basename, path] = line.split(':').map(s => s.trim());
+									
+									// Parse basename to extract guid and optional instance_id
+									// Format: guid or guid.instance_id
+									let parts = basename.split('.'),
+										guid = parts[0],
+										instanceId = parts.length > 1 ? parts[1] : null;
 
 									// Add some data from the local apps definition if it's available
 									if (!applications[guid]) {
@@ -75,7 +82,7 @@ export async function getAllApplications() {
 									}
 
 									lookupPromises.push(
-										getApplicationOptions(target, path.trim())
+										getApplicationOptions(target, path.trim(), instanceId)
 											.then(appData => {
 												applications[guid]['hosts'].push(appData);
 											})
@@ -104,11 +111,13 @@ export async function getAllApplications() {
  *
  * @param {string} host Host IP or name
  * @param {string} path Path to the application on the host
- * @returns {Object<host:string, path:string, options:Array<string>>}
+ * @param {string|null} instanceId Optional instance ID
+ * @returns {Object<host:string, path:string, instance_id:string|null, options:Array<string>>}
  */
-async function getApplicationOptions(host, path) {
+async function getApplicationOptions(host, path, instanceId = null) {
 	return new Promise((resolve, reject) => {
-		cmdRunner(host, `${path}/manage.py --help`)
+		const instanceParam = instanceId ? ` --instance ${instanceId}` : '';
+		cmdRunner(host, `${path}/manage.py${instanceParam} --help`)
 			.then(result => {
 				let options = [];
 				const helpText = result.stdout;
@@ -123,6 +132,7 @@ async function getApplicationOptions(host, path) {
 				resolve({
 					host: host,
 					path: path,
+					instance_id: instanceId,
 					options: options
 				});
 			})
@@ -131,6 +141,7 @@ async function getApplicationOptions(host, path) {
 				resolve({
 					host: host,
 					path: path,
+					instance_id: instanceId,
 					options: []
 				});
 			});
