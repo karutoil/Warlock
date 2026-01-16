@@ -771,9 +771,14 @@ function stream(
 	p.cancel = () => {
 		abortedByClient = true;
 		try { controller.abort(); } catch (e) {}
-		// cancel reader if active
+		// cancel reader if active - swallow any promise rejection to avoid unhandled rejection
 		if (reader) {
-			try { reader.cancel(); } catch (e) {}
+			try {
+				const cancelResult = reader.cancel();
+				if (cancelResult && typeof cancelResult.catch === 'function') {
+					cancelResult.catch(() => {});
+				}
+			} catch (e) {}
 			reader = null;
 		}
 		// clear any pending reconnect
@@ -969,21 +974,73 @@ function showToast(type, message, duration = 4000) {
  * @param {string} data
  */
 function terminalOutputHelper(terminalOutput, event, data) {
-	let scrolledToBottom = terminalOutput.scrollHeight - terminalOutput.clientHeight <= terminalOutput.scrollTop + 1;
+    // Buffered append to avoid blocking the main thread when many lines arrive quickly
+    try {
+        // Initialize buffer and control fields on the element
+        if (!terminalOutput._logBuffer) {
+            terminalOutput._logBuffer = [];
+            terminalOutput._flushScheduled = false;
+            terminalOutput._maxLines = terminalOutput._maxLines || 5000; // configurable per element
+        }
 
-	// Swap any < ... > to prevent HTML issues
-	data = data.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // Determine if we should keep the user's scroll position
+        const scrolledToBottom = terminalOutput.scrollHeight - terminalOutput.clientHeight <= terminalOutput.scrollTop + 1;
 
-	// Put pretty colors in place
-	data = parseTerminalCodes(data);
+        // Sanitize and format
+        data = String(data || '');
+        data = data.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        data = parseTerminalCodes(data);
 
-	// Append output
-	terminalOutput.innerHTML += `<div class="line-${event}">${data}</div>`;
+        // Push HTML into buffer
+        terminalOutput._logBuffer.push(`<div class="line-${event}">${data}</div>`);
 
-	// Scroll to bottom
-	if (scrolledToBottom) {
-		terminalOutput.scrollTop = terminalOutput.scrollHeight;
-	}
+        // Schedule a flush on next animation frame (throttled)
+        if (!terminalOutput._flushScheduled) {
+            terminalOutput._flushScheduled = true;
+            requestAnimationFrame(() => {
+                terminalOutput._flushScheduled = false;
+                // Move up to N lines per frame to avoid long tasks
+                const MAX_PER_FRAME = 200;
+                const toFlush = terminalOutput._logBuffer.splice(0, MAX_PER_FRAME);
+
+                if (toFlush.length === 0) return;
+
+                const frag = document.createDocumentFragment();
+                const tmp = document.createElement('div');
+                tmp.innerHTML = toFlush.join('');
+                while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+
+                terminalOutput.appendChild(frag);
+
+                // Trim to max lines
+                try {
+                    const max = terminalOutput._maxLines;
+                    while (terminalOutput.children.length > max) {
+                        terminalOutput.removeChild(terminalOutput.firstChild);
+                    }
+                } catch (e) {
+                    // ignore
+                }
+
+                if (scrolledToBottom) {
+                    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                }
+
+                // If more buffered entries remain, schedule another frame
+                if (terminalOutput._logBuffer.length > 0) {
+                    terminalOutput._flushScheduled = true;
+                    requestAnimationFrame(arguments.callee);
+                }
+            });
+        }
+    } catch (err) {
+        // Fallback: minimal append to ensure logs still show
+        try {
+            terminalOutput.innerHTML += `<div class="line-${event}">${String(data)}</div>`;
+        } catch (e) {
+            // ignore
+        }
+    }
 }
 
 /**

@@ -21,6 +21,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.3.0/luxon.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-luxon/1.3.1/chartjs-adapter-luxon.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <script src="/assets/common.js"></script>
 </head>
 <body>
@@ -1073,6 +1074,9 @@
         let logsCustomStart = null;
         let logsCustomEnd = null;
         let logsFilterText = '';
+        // Client-side rate limit to prevent spamming mode switches
+        let logsLastRequestAt = 0;
+        const LOGS_RATE_LIMIT_MS = 3000; // 3 seconds between requests
 
         // Filter logs in real-time
         function filterLogs() {
@@ -1189,16 +1193,73 @@
                     url = `/api/service/logs/${guid}/${host}/${service}?mode=custom&start=${encodeURIComponent(logsCustomStart)}&end=${encodeURIComponent(logsCustomEnd)}`;
                 }
                 fetch(url)
-                    .then(response => response.text())
+                    .then(async response => {
+                        // Prefer JSON responses (compressed), else fallback to text
+                        const contentType = response.headers.get('content-type') || '';
+                        if (!response.ok) {
+                            const text = await response.text();
+                            throw new Error(text || `HTTP ${response.status}`);
+                        }
+
+                        if (contentType.includes('application/json')) {
+                            return response.json();
+                        }
+
+                        // Fallback - plain text
+                        return {success: true, compressed: false, data: await response.text()};
+                    })
                     .then(result => {
-                        if (result.trim() === '') {
+                        if (!result.success) {
+                            const logEntry = document.createElement('div');
+                            logEntry.textContent = `Error fetching logs: ${result.error || 'Unknown error'}`;
+                            logEntry.className = 'line-stderr';
+                            logsContainer.appendChild(logEntry);
+                            return;
+                        }
+
+                        let rawText = '';
+
+                        if (result.compressed && result.data) {
+                            try {
+                                // Provide a small UI hint that decompression is happening
+                                const decompressMsg = document.createElement('div');
+                                decompressMsg.className = 'line-stdout';
+                                decompressMsg.style.opacity = 0.7;
+                                decompressMsg.textContent = '[INFO] Decompressing logs...';
+                                logsContainer.appendChild(decompressMsg);
+
+                                // Decode base64 to Uint8Array
+                                const b64 = result.data.replace(/\s+/g, '');
+                                const binary = atob(b64);
+                                const len = binary.length;
+                                const bytes = new Uint8Array(len);
+                                for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+
+                                // Decompress using pako
+                                rawText = pako.ungzip(bytes, { to: 'string' });
+
+                                // Remove the decompress message
+                                decompressMsg.remove();
+                            } catch (err) {
+                                const logEntry = document.createElement('div');
+                                logEntry.textContent = `Error decompressing logs: ${err.message}`;
+                                logEntry.className = 'line-stderr';
+                                logsContainer.appendChild(logEntry);
+                                return;
+                            }
+                        } else if (typeof result.data === 'string') {
+                            rawText = result.data;
+                        }
+
+                        if (!rawText || rawText.trim() === '') {
                             const logEntry = document.createElement('div');
                             logEntry.textContent = 'No logs available for the selected time period.';
                             logEntry.className = 'line-stderr';
                             logsContainer.appendChild(logEntry);
                             return;
                         }
-                        const lines = result.split('\n');
+
+                        const lines = rawText.split('\n');
                         lines.forEach(line => {
                             if (line.trim()) {
                                 const logEntry = document.createElement('div');
@@ -1207,6 +1268,7 @@
                                 logsContainer.appendChild(logEntry);
                             }
                         });
+
                         // Apply filter after loading logs
                         if (logsFilterText) {
                             filterLogs();
@@ -1223,6 +1285,13 @@
 
         // Logs mode buttons
         document.getElementById('logs-mode-live')?.addEventListener('click', () => {
+            const now = Date.now();
+            if (now - logsLastRequestAt < LOGS_RATE_LIMIT_MS) {
+                showToast('warning', 'Please wait a few seconds before switching log modes.');
+                return;
+            }
+            logsLastRequestAt = now;
+
             if (logsMode !== 'live') {
                 logsMode = 'live';
                 logsOffset = 1;
@@ -1246,6 +1315,13 @@
         });
 
         document.getElementById('logs-mode-hour')?.addEventListener('click', () => {
+            const now = Date.now();
+            if (now - logsLastRequestAt < LOGS_RATE_LIMIT_MS) {
+                showToast('warning', 'Please wait a few seconds before switching log modes.');
+                return;
+            }
+            logsLastRequestAt = now;
+
             if (logsMode !== 'h') {
                 logsMode = 'h';
                 logsOffset = 1;
@@ -1269,6 +1345,13 @@
         });
 
         document.getElementById('logs-mode-day')?.addEventListener('click', () => {
+            const now = Date.now();
+            if (now - logsLastRequestAt < LOGS_RATE_LIMIT_MS) {
+                showToast('warning', 'Please wait a few seconds before switching log modes.');
+                return;
+            }
+            logsLastRequestAt = now;
+
             if (logsMode !== 'd') {
                 logsMode = 'd';
                 logsOffset = 1;

@@ -10,6 +10,10 @@ let serviceIdentifier = null,
 	offset = 1,
 	req = null;
 
+// Prevent rapid switching between modes (client-side guard)
+let logsLastRequestAt = 0;
+const LOGS_RATE_LIMIT_MS = 3000; // 3 seconds
+
 async function fetchLogs() {
 	logsContainer.innerHTML = '';
 
@@ -56,16 +60,60 @@ async function fetchLogs() {
 		fetch(`/api/service/logs/${loadedApplication}/${loadedHost}/${serviceIdentifier}?mode=${mode}&offset=${offset}`, {
 			method: 'GET',
 		})
-			.then(response => response.text())
+			.then(async response => {
+				const contentType = response.headers.get('content-type') || '';
+				if (!response.ok) {
+					const text = await response.text();
+					throw new Error(text || `HTTP ${response.status}`);
+				}
+				if (contentType.includes('application/json')) return response.json();
+				return {success: true, compressed: false, data: await response.text()};
+			})
 			.then(result => {
-				if (result.trim() === '') {
+				if (!result.success) {
+					const logEntry = document.createElement('div');
+					logEntry.textContent = `Error fetching logs: ${result.error || 'Unknown error'}`;
+					logEntry.className = 'line-stderr';
+					logsContainer.appendChild(logEntry);
+					return;
+				}
+
+				let rawText = '';
+				if (result.compressed && result.data) {
+					try {
+						const decompressMsg = document.createElement('div');
+						decompressMsg.className = 'line-stdout';
+						decompressMsg.style.opacity = 0.7;
+						decompressMsg.textContent = '[INFO] Decompressing logs...';
+						logsContainer.appendChild(decompressMsg);
+
+						const b64 = result.data.replace(/\s+/g, '');
+						const binary = atob(b64);
+						const len = binary.length;
+						const bytes = new Uint8Array(len);
+						for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+						rawText = pako.ungzip(bytes, { to: 'string' });
+						decompressMsg.remove();
+					} catch (err) {
+						const logEntry = document.createElement('div');
+						logEntry.textContent = `Error decompressing logs: ${err.message}`;
+						logEntry.className = 'line-stderr';
+						logsContainer.appendChild(logEntry);
+						return;
+					}
+				} else if (typeof result.data === 'string') {
+					rawText = result.data;
+				}
+
+				if (!rawText || rawText.trim() === '') {
 					const logEntry = document.createElement('div');
 					logEntry.textContent = 'No logs available for the selected time period.';
 					logEntry.className = 'line-stderr';
 					logsContainer.appendChild(logEntry);
 					return;
 				}
-				let lines = result.split('\n');
+
+				let lines = rawText.split('\n');
 				lines.forEach(line => {
 					const logEntry = document.createElement('div');
 					logEntry.textContent = line;
@@ -173,6 +221,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
 			logsModeLiveBtn.addEventListener('click', event => {
 				event.preventDefault();
+				const now = Date.now();
+				if (now - logsLastRequestAt < LOGS_RATE_LIMIT_MS) {
+					showToast('warning', 'Please wait a few seconds before switching log modes.');
+					return;
+				}
+				logsLastRequestAt = now;
 				if (mode !== 'live') {
 					mode = 'live';
 					offset = 1;
@@ -187,6 +241,12 @@ window.addEventListener('DOMContentLoaded', () => {
 			});
 			logsModeHourBtn.addEventListener('click', event => {
 				event.preventDefault();
+				const now = Date.now();
+				if (now - logsLastRequestAt < LOGS_RATE_LIMIT_MS) {
+					showToast('warning', 'Please wait a few seconds before switching log modes.');
+					return;
+				}
+				logsLastRequestAt = now;
 				if (mode !== 'h') {
 					mode = 'h';
 					offset = 1;
@@ -200,6 +260,12 @@ window.addEventListener('DOMContentLoaded', () => {
 			});
 			logsModeDayBtn.addEventListener('click', event => {
 				event.preventDefault();
+				const now = Date.now();
+				if (now - logsLastRequestAt < LOGS_RATE_LIMIT_MS) {
+					showToast('warning', 'Please wait a few seconds before switching log modes.');
+					return;
+				}
+				logsLastRequestAt = now;
 				if (mode !== 'd') {
 					mode = 'd';
 					offset = 1;

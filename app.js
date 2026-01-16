@@ -85,7 +85,11 @@ app.use(session({
  ***************************************************************/
 
 // Middleware
+const compression = require('compression');
+
 app.use(express.json());
+// Enable gzip compression for all responses (improves large log fetches and other API payloads)
+app.use(compression());
 app.use(express.static(path.join(__dirname, 'public')));
 
 

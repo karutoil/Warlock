@@ -15,8 +15,7 @@ export async function cmdRunner(target, cmd, extraFields = {}) {
 		// Confirm the host exists in the database first
 		Host.count({where: {ip: target}}).then(count => {
 			let sshCommand = null,
-				cmdOptions = {timeout: 30000, maxBuffer: 1024 * 1024 * 20};
-
+			cmdOptions = {timeout: 30000, maxBuffer: 1024 * 1024 * 100}; // Increase buffer to 100MB for big log payloads
 			if (count === 0) {
 				return reject({
 					error: new Error(`Target host '${target}' not found in database.`),

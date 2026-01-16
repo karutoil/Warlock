@@ -6,6 +6,10 @@ const {cmdRunner} = require("../../libs/cmd_runner.mjs");
 
 const router = express.Router();
 
+// Rate limiting for historical log fetches to prevent abuse (per session+service)
+const LOGS_RATE_LIMIT_WINDOW_MS = 3000; // 3 seconds minimum between requests
+const logsRateMap = new Map();
+
 /**
  * Get recent logs for a given service
  */
@@ -21,34 +25,53 @@ router.get('/:guid/:host/:service', validate_session, (req, res) => {
 				cmdStreamer(dat.host.host, `journalctl -qfu ${dat.service.service}.service --no-pager`, res);
 			}
 			else if (mode === 'd' || mode === 'h') {
-				// User requested a static view of recent logs
-				const cmd = `journalctl -qu ${dat.service.service}.service --no-pager -S -${offset}${mode} -U -${offset-1}${mode}`;
+				// Rate limit check - prevent rapid mode switching
+				try {
+					const rateKey = `${req.sessionID}:${dat.host.host}:${dat.service.service}`;
+					const last = logsRateMap.get(rateKey) || 0;
+					const now = Date.now();
+					if (now - last < LOGS_RATE_LIMIT_WINDOW_MS) {
+						const wait = Math.ceil((LOGS_RATE_LIMIT_WINDOW_MS - (now - last)) / 1000) || 1;
+						res.set('Retry-After', String(wait));
+						res.status(429).json({success: false, error: `Too many log requests - please wait ${wait} second(s)`});
+						return;
+					}
+					logsRateMap.set(rateKey, now);
+					// garbage collect the key after a short period
+					setTimeout(() => logsRateMap.delete(rateKey), LOGS_RATE_LIMIT_WINDOW_MS * 4);
+				} catch (e) {
+					// If anything goes wrong with rate limiting, continue but log
+					console.warn('Rate limit check failed:', e);
+				}
+
+				// User requested a static view of recent logs - return gzipped base64 to reduce transfer size
+				const cmd = `journalctl -qu ${dat.service.service}.service --no-pager -S -${offset}${mode} -U -${offset-1}${mode} | gzip -c | base64`;
 				cmdRunner(dat.host.host, cmd)
 					.then(output => {
-						res.send(output.stdout);
+						res.json({success: true, compressed: true, data: output.stdout});
 					})
 					.catch(e => {
-						res.status(400).send(`Could not retrieve service logs: ${e.error.message}`);
+						res.status(400).json({success: false, error: e.error?.message || e.message});
 					});
 			}
 			else if (mode === 'custom') {
-				// User requested custom date range
+				// User requested custom date range - return gzipped base64
 				const startDate = req.query.start;
 				const endDate = req.query.end;
 				
 				if (!startDate || !endDate) {
-					res.status(400).send('Start and end dates are required for custom mode');
+					res.status(400).json({success: false, error: 'Start and end dates are required for custom mode'});
 					return;
 				}
 				
 				// journalctl expects format like "2023-01-15 14:30:00"
-				const cmd = `journalctl -qu ${dat.service.service}.service --no-pager -S "${startDate}" -U "${endDate}"`;
+				const cmd = `journalctl -qu ${dat.service.service}.service --no-pager -S "${startDate}" -U "${endDate}" | gzip -c | base64`;
 				cmdRunner(dat.host.host, cmd)
 					.then(output => {
-						res.send(output.stdout);
+						res.json({success: true, compressed: true, data: output.stdout});
 					})
 					.catch(e => {
-						res.status(400).send(`Could not retrieve service logs: ${e.error.message}`);
+						res.status(400).json({success: false, error: e.error?.message || e.message});
 					});
 			}
 			else {
