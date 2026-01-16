@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warlock - Servers Overview</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/frontend.css">
+    <link rel="stylesheet" href="/assets/themes.css">
+    <script src="/assets/common.js"></script>
+    <style>
+        .servers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .server-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0;
+            transition: all 0.3s ease;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .server-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 150, 255, 0.2);
+            border-color: var(--primary-color);
+        }
+
+        .server-card-header {
+            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .server-card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .server-card-title {
+            flex: 1;
+        }
+
+        .server-card-title h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .server-card-title p {
+            margin: 0.25rem 0 0 0;
+            font-size: 0.85rem;
+            opacity: 0.9;
+            color: #fff;
+        }
+
+        .server-card-body {
+            padding: 1.25rem;
+        }
+
+        .server-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .server-stat {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .server-stat-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            opacity: 0.7;
+            margin-bottom: 0.25rem;
+            letter-spacing: 0.5px;
+        }
+
+        .server-stat-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .server-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .server-status.running {
+            background: rgba(0, 212, 170, 0.2);
+            color: #00d4aa;
+        }
+
+        .server-status.stopped {
+            background: rgba(255, 107, 107, 0.2);
+            color: #ff6b6b;
+        }
+
+        .server-status.starting {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+
+        .server-status i {
+            font-size: 0.7rem;
+        }
+
+        .server-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .server-action-btn {
+            flex: 1;
+            padding: 0.6rem;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-color);
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .server-action-btn:hover {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #fff;
+            transform: translateY(-2px);
+        }
+
+        .server-action-btn i {
+            font-size: 1.2rem;
+        }
+
+        .server-action-btn.start:hover {
+            background: #00d4aa;
+            border-color: #00d4aa;
+        }
+
+        .server-action-btn.stop:hover {
+            background: #ff6b6b;
+            border-color: #ff6b6b;
+        }
+
+        .no-servers-message {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .no-servers-message i {
+            font-size: 4rem;
+            opacity: 0.3;
+            margin-bottom: 1rem;
+        }
+
+        .loading-skeleton {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .view-toggle {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .view-toggle-btn {
+            padding: 0.5rem 1rem;
+            background: var(--button-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-color);
+        }
+
+        .view-toggle-btn.active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav.ejs') %>
+
+    <div class="main-container" style="grid-template-columns: 1fr; max-width: 1600px;">
+        <main class="content-area">
+            <div class="content-header">
+                <div class="content-header-inner">
+                    <h2>
+                        <i class="fas fa-server"></i>
+                        Server Overview
+                    </h2>
+                    <div class="content-header-buttons">
+                        <div class="view-toggle">
+                            <button class="view-toggle-btn active" data-view="cards">
+                                <i class="fas fa-th-large"></i>
+                            </button>
+                            <button class="view-toggle-btn" data-view="table">
+                                <i class="fas fa-table"></i>
+                            </button>
+                        </div>
+                        <button class="link-control action-create" data-href="/application/install">
+                            <i class="fas fa-plus"></i>
+                            Install Game
+                        </button>
+                    </div>
+                    <p>Manage and monitor all your game servers</p>
+                </div>
+            </div>
+            
+            <div class="content-body">
+                <div id="serversGrid" class="servers-grid">
+                    <!-- Loading skeletons -->
+                    <div class="server-card loading-skeleton">
+                        <div class="server-card-header">
+                            <div class="server-card-icon"></div>
+                            <div class="server-card-title">
+                                <h3>Loading...</h3>
+                                <p>Please wait</p>
+                            </div>
+                        </div>
+                        <div class="server-card-body">
+                            <div class="server-stats">
+                                <div class="server-stat">
+                                    <span class="server-stat-label">Status</span>
+                                    <span class="server-stat-value">-</span>
+                                </div>
+                                <div class="server-stat">
+                                    <span class="server-stat-label">Players</span>
+                                    <span class="server-stat-value">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Table view (hidden by default) -->
+                <div id="serversTable" style="display: none;">
+                    <table id="services-table">
+                        <thead>
+                        <tr class="header">
+                            <th class="host">Host</th>
+                            <th class="icon">Game</th>
+                            <th class="name">Server Name</th>
+                            <th class="status">Status</th>
+                            <th class="port">Port</th>
+                            <th class="players">Players</th>
+                            <th class="memory">Memory</th>
+                            <th class="cpu">CPU</th>
+                            <th class="actions">Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr class="service service-loading">
+                            <td class="host">Loading</td>
+                            <td class="icon"><img src="/assets/media/generic/controller.webp" alt="loading"></td>
+                            <td class="name">Please wait</td>
+                            <td class="status"><i class="fas fa-spin fa-spinner"></i> LOADING...</td>
+                            <td class="port">-</td>
+                            <td class="players">-</td>
+                            <td class="memory">-</td>
+                            <td class="cpu">-</td>
+                            <td class="actions"></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <%- include('partials/theme-selector.ejs') %>
+    <script src="/assets/servers.js"></script>
+</body>
+</html>

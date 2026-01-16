@@ -137,6 +137,129 @@ router.get('/:host', validate_session, (req, res) => {
 	});
 });
 
+/**
+ * Rename a file or folder on the target host
+ * Resolves symlinks to prevent breaking them
+ */
+router.post('/:host/rename', validate_session, (req, res) => {
+	const host = req.params.host;
+	const oldPath = req.query.oldPath;
+	const newName = req.query.newName;
+
+	if (!oldPath || !newName) {
+		return res.json({
+			success: false,
+			error: 'Old path and new name are required'
+		});
+	}
+
+	Host.count({ where: { ip: host } }).then(count => {
+		if (count === 0) {
+			return res.json({
+				success: false,
+				error: 'Requested host is not in the configured HOSTS list'
+			});
+		}
+
+		logger.info('Renaming file/folder:', oldPath, 'to:', newName);
+
+		const path_obj = require('path');
+		
+		// First check if the source is a symlink
+		const checkSymlinkCmd = `[ -h "${oldPath}" ] && echo "true" || echo "false"`;
+		
+		cmdRunner(host, checkSymlinkCmd).then(result => {
+			const isSymlink = result.stdout.trim() === 'true';
+			
+			if (isSymlink) {
+				// For symlinks: rename both the target file and the symlink
+				logger.debug('Source is a symlink, will rename both target and symlink');
+				
+				const resolveCmd = `readlink -f "${oldPath}"`;
+				cmdRunner(host, resolveCmd).then(resolveResult => {
+					const targetPath = resolveResult.stdout.trim();
+					const targetDir = path_obj.dirname(targetPath);
+					const targetExt = path_obj.extname(targetPath);
+					const targetBaseName = path_obj.basename(targetPath, targetExt);
+					
+					// Determine new names
+					const newExt = path_obj.extname(newName);
+					const newBaseName = path_obj.basename(newName, newExt);
+					
+					// New target path (same directory as old target, but with new name)
+					const newTargetPath = path_obj.join(targetDir, newBaseName + (newExt || targetExt));
+					
+					// New symlink path (same directory as old symlink, with new name)
+					const symlinkDir = path_obj.dirname(oldPath);
+					const newSymlinkPath = path_obj.join(symlinkDir, newName);
+					
+					logger.debug('Renaming target:', targetPath, '->', newTargetPath);
+					logger.debug('Renaming symlink:', oldPath, '->', newSymlinkPath);
+					
+					// Rename the target file, remove old symlink, create new symlink pointing to renamed target
+					const cmd = `mv "${targetPath}" "${newTargetPath}" && rm "${oldPath}" && ln -s "${newTargetPath}" "${newSymlinkPath}"`;
+					
+					cmdRunner(host, cmd).then(() => {
+						logger.info('Symlink renamed successfully. Target:', targetPath, '->', newTargetPath, 'Symlink:', oldPath, '->', newSymlinkPath);
+						res.json({
+							success: true,
+							message: 'File/folder renamed successfully',
+							newPath: newSymlinkPath,
+							targetPath: newTargetPath
+						});
+					})
+					.catch(e => {
+						logger.error('Rename symlink error:', e);
+						return res.json({
+							success: false,
+							error: `Cannot rename file/folder: ${e.error?.message || e.message || 'Unknown error'}`
+						});
+					});
+				})
+				.catch(e => {
+					logger.error('Failed to resolve symlink:', e);
+					return res.json({
+						success: false,
+						error: `Cannot resolve symlink: ${e.error?.message || e.message || 'Unknown error'}`
+					});
+				});
+			} else {
+				// For regular files/folders: just rename normally
+				const dirPath = path_obj.dirname(oldPath);
+				const newPath = path_obj.join(dirPath, newName);
+
+				logger.debug('Renaming regular file:', oldPath, 'to:', newPath);
+
+				// Use mv command to rename
+				const cmd = `mv "${oldPath}" "${newPath}"`;
+				
+				cmdRunner(host, cmd).then(() => {
+					logger.info('File/folder renamed successfully:', oldPath, '->', newPath);
+					res.json({
+						success: true,
+						message: 'File/folder renamed successfully',
+						newPath: newPath
+					});
+				})
+				.catch(e => {
+					logger.error('Rename file/folder error:', e);
+					return res.json({
+						success: false,
+						error: `Cannot rename file/folder: ${e.error?.message || e.message || 'Unknown error'}`
+					});
+				});
+			}
+		})
+		.catch(e => {
+			logger.error('Failed to check symlink status:', e);
+			return res.json({
+				success: false,
+				error: `Cannot check file type: ${e.error?.message || e.message || 'Unknown error'}`
+			});
+		});
+	});
+});
+
 router.move('/:host', validate_session, (req, res) => {
 	const { oldPath, newPath } = req.body,
 		host = req.params.host;
@@ -175,7 +298,8 @@ router.post('/:host', validate_session, (req, res) => {
 		path = req.query.path,
 		{ content } = req.body,
 		name = req.query.name || null,
-		isDir = req.query.isdir || false;
+		isDir = req.query.isdir || false,
+		shouldExtract = req.query.extract === '1' || req.query.extract === 'true';
 
 	isDir = (isDir === 'true' || isDir === '1');
 
@@ -225,6 +349,56 @@ router.post('/:host', validate_session, (req, res) => {
 				error: 'Requested host is not in the configured HOSTS list'
 			});
 		}
+
+		// Handle file extraction
+		if (shouldExtract) {
+			logger.info('Extracting file:', path);
+			
+			// Determine the destination directory (same as the file, without the extension)
+			const path_obj = require('path');
+			let outputDir = path_obj.dirname(path);
+			const filename = path_obj.basename(path);
+			
+			// Build extraction command based on file type
+			let cmd;
+			if (filename.endsWith('.tar.gz') || filename.endsWith('.tgz')) {
+				cmd = `tar -xzf "${path}" -C "${outputDir}"`;
+			} else if (filename.endsWith('.tar.bz2')) {
+				cmd = `tar -xjf "${path}" -C "${outputDir}"`;
+			} else if (filename.endsWith('.tar')) {
+				cmd = `tar -xf "${path}" -C "${outputDir}"`;
+			} else if (filename.endsWith('.zip')) {
+				cmd = `unzip -q "${path}" -d "${outputDir}"`;
+			} else if (filename.endsWith('.gz')) {
+				cmd = `gunzip -f "${path}"`;
+			} else if (filename.endsWith('.bz2')) {
+				cmd = `bunzip2 -f "${path}"`;
+			} else if (filename.endsWith('.7z')) {
+				cmd = `7z x "${path}" -o"${outputDir}"`;
+			} else {
+				return res.json({
+					success: false,
+					error: 'Unsupported archive format'
+				});
+			}
+
+			cmdRunner(host, cmd).then(() => {
+				logger.debug('File extracted successfully:', path);
+				res.json({
+					success: true,
+					message: 'File extracted successfully'
+				});
+			})
+			.catch(e => {
+				logger.error('Extract file error:', e);
+				return res.json({
+					success: false,
+					error: `Cannot extract file: ${e.error?.message || e.message}`
+				});
+			});
+			return;
+		}
+
 		if (isDir) {
 			// Create directory
 			logger.info('Creating directory:', path);
@@ -402,9 +576,9 @@ router.delete('/:host', validate_session, (req, res) => {
 });
 
 /**
- * Save file contents to a given path on the target host
+ * Extract archive file on the target host
  */
-router.post('/extract/:host', validate_session, (req, res) => {
+router.post('/:host/extract', validate_session, (req, res) => {
 	let host = req.params.host,
 		path = req.query.path || null;
 
@@ -424,116 +598,453 @@ router.post('/extract/:host', validate_session, (req, res) => {
 			});
 		}
 
-		// Retrieve some information about the file and target environment.
-		// We'll need to know the mimetype of the archive and which archive formats are available.
-		const cmdDiscover = `if [ -e "${path}" ]; then file --mime-type "${path}"; else echo "missing"; fi;` +
-			'if which unzip &>/dev/null; then echo "zip"; fi;' +
-			'if which unrar &>/dev/null; then echo "rar"; fi;' +
-			'if which tar &>/dev/null; then echo "tar"; echo "tar/gz"; echo "tar/xz"; echo "tar/bzip2"; fi;' +
-			'if which unxz &>/dev/null; then echo "xz"; fi;' +
-			'if which bunzip2 &>/dev/null; then echo "bzip2"; fi;' +
-			'if which 7z &>/dev/null; then echo "7z"; fi;';
+		// First resolve symlink if path is a symlink
+		const resolveCmd = `[ -h "${path}" ] && readlink -f "${path}" || echo "${path}"`;
+		
+		cmdRunner(host, resolveCmd).then(resolveResult => {
+			const resolvedPath = resolveResult.stdout.trim();
+			logger.debug('Resolved path for extraction:', resolvedPath);
+			
+			// Retrieve some information about the file and target environment.
+			// We'll need to know the mimetype of the archive and which archive formats are available.
+			const cmdDiscover = `if [ -e "${resolvedPath}" ]; then file --mime-type "${resolvedPath}"; else echo "missing"; fi;` +
+				'if which unzip &>/dev/null; then echo "zip"; fi;' +
+				'if which unrar &>/dev/null; then echo "rar"; fi;' +
+				'if which tar &>/dev/null; then echo "tar"; echo "tar/gz"; echo "tar/xz"; echo "tar/bzip2"; fi;' +
+				'if which unxz &>/dev/null; then echo "xz"; fi;' +
+				'if which bunzip2 &>/dev/null; then echo "bzip2"; fi;' +
+				'if which 7z &>/dev/null; then echo "7z"; fi;';
 
-		const mimetypeToHandler = {
-			'application/zip': 'zip',
-			'application/x-rar': 'rar',
-			'application/x-tar': 'tar',
-			'application/gzip': 'gzip',
-			'application/x-bzip2': 'bzip2',
-			'application/x-xz': 'xz',
-			'application/x-7z-compressed': '7z',
-		};
+			const mimetypeToHandler = {
+				'application/zip': 'zip',
+				'application/x-rar': 'rar',
+				'application/x-tar': 'tar',
+				'application/gzip': 'gzip',
+				'application/x-bzip2': 'bzip2',
+				'application/x-xz': 'xz',
+				'application/x-7z-compressed': '7z',
+			};
 
-		const handlerSources = {
-			'zip': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/zip/linux_install_unzip.sh',
-			'rar': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/rar/linux_install_unrar.sh',
-			'7z': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/7zip/linux_install_7zip.sh',
-		};
+			const handlerSources = {
+				'zip': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/zip/linux_install_unzip.sh',
+				'rar': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/rar/linux_install_unrar.sh',
+				'7z': 'https://raw.githubusercontent.com/eVAL-Agency/ScriptsCollection/refs/heads/main/dist/7zip/linux_install_7zip.sh',
+			};
 
-		const cmdSudoPrefix = `sudo -u $(stat -c%U "$(dirname "${path}")")`;
+			const cmdSudoPrefix = `sudo -u $(stat -c%U "$(dirname "${resolvedPath}")")`;
 
-		const cmdExtracts = {
-			'zip': `${cmdSudoPrefix} unzip -o "${path}" -d "$(dirname "${path}")/"`,
-			'rar': `${cmdSudoPrefix} unrar x -o+ "${path}" "$(dirname "${path}")/"`,
-			'7z': `${cmdSudoPrefix} 7z x "${path}" -o"$(dirname "${path}")/" -y`,
-			'tar/gzip': `${cmdSudoPrefix} tar -xzf "${path}" -C "$(dirname "${path}")/"`,
-			'tar/bzip2': `${cmdSudoPrefix} tar -xjf "${path}" -C "$(dirname "${path}")/"`,
-			'tar/xz': `${cmdSudoPrefix} tar -xJf "${path}" -C "$(dirname "${path}")/"`,
-			'gzip': `${cmdSudoPrefix} gunzip -c "${path}" > "$(dirname "${path}")/$(basename "${path}" .gz)"`,
-			'bzip2': `${cmdSudoPrefix} bunzip2 -c "${path}" > "$(dirname "${path}")/$(basename "${path}" .bz2)"`,
-			'xz': `${cmdSudoPrefix} unxz -c "${path}" > "$(dirname "${path}")/$(basename "${path}" .xz)"`,
-		}
-
-		cmdRunner(host, cmdDiscover).then(async output => {
-			let lines = output.stdout.trim().split('\n'),
-				mimetype = lines[0] || 'missing',
-				availableExtractors = lines.slice(1);
-
-			if (mimetype.includes(': ')) {
-				mimetype = mimetype.split(': ').pop().trim();
+			const cmdExtracts = {
+				'zip': `${cmdSudoPrefix} unzip -o "${resolvedPath}" -d "$(dirname "${resolvedPath}")/"`,
+				'rar': `${cmdSudoPrefix} unrar x -o+ "${resolvedPath}" "$(dirname "${resolvedPath}")/"`,
+				'7z': `${cmdSudoPrefix} 7z x "${resolvedPath}" -o"$(dirname "${resolvedPath}")/" -y`,
+				'tar/gz': `${cmdSudoPrefix} tar -xzf "${resolvedPath}" -C "$(dirname "${resolvedPath}")/"`,
+				'tar/bzip2': `${cmdSudoPrefix} tar -xjf "${resolvedPath}" -C "$(dirname "${resolvedPath}")/"`,
+				'tar/xz': `${cmdSudoPrefix} tar -xJf "${resolvedPath}" -C "$(dirname "${resolvedPath}")/"`,
+				'gzip': `${cmdSudoPrefix} gunzip -c "${resolvedPath}" > "$(dirname "${resolvedPath}")/$(basename "${resolvedPath}" .gz)"`,
+				'bzip2': `${cmdSudoPrefix} bunzip2 -c "${resolvedPath}" > "$(dirname "${resolvedPath}")/$(basename "${resolvedPath}" .bz2)"`,
+				'xz': `${cmdSudoPrefix} unxz -c "${resolvedPath}" > "$(dirname "${resolvedPath}")/$(basename "${resolvedPath}" .xz)"`,
 			}
 
-			if (mimetype === 'missing') {
-				return res.json({
-					success: false,
-					error: 'The specified file does not exist'
-				});
-			}
+			cmdRunner(host, cmdDiscover).then(async output => {
+				let lines = output.stdout.trim().split('\n'),
+					mimetype = lines[0] || 'missing',
+					availableExtractors = lines.slice(1);
 
-			let handler = mimetypeToHandler[mimetype] || null;
-			if (!handler) {
-				return res.json({
-					success: false,
-					error: `Unsupported archive mimetype: ${mimetype}`
-				});
-			}
+				if (mimetype.includes(': ')) {
+					mimetype = mimetype.split(': ').pop().trim();
+				}
 
-			// Tarballs can be complicated, ie '.tar.gz' or '.tgz' will both be 'application/gzip' mimetype
-			// but so will '.gz' files which are not tarballs.  We need to check the filename as well.
-			if (handler === 'gzip' && (path.endsWith('.tar.gz') || path.endsWith('.tgz'))) {
-				handler = 'tar/gzip';
-			}
-			else if (handler === 'bzip2' && path.endsWith('.tar.bz2')) {
-				handler = 'tar/bzip2';
-			}
-			else if (handler === 'xz' && path.endsWith('.tar.xz')) {
-				handler = 'tar/xz';
-			}
-
-			if (!availableExtractors.includes(handler)) {
-				// Install this handler on the server
-				let source = handlerSources[handler] || null;
-				if (!source) {
+				if (mimetype === 'missing') {
 					return res.json({
 						success: false,
-						error: `No installation source found for missing extractor: ${handler}`
+						error: 'The specified file does not exist'
 					});
 				}
 
-				await cmdRunner(host, buildRemoteExec(source).cmd);
-			}
+				let handler = mimetypeToHandler[mimetype] || null;
+				if (!handler) {
+					return res.json({
+						success: false,
+						error: `Unsupported archive mimetype: ${mimetype}`
+					});
+				}
 
-			const cmdExtract = cmdExtracts[handler] || null;
-			if (!cmdExtract) {
+				// Tarballs can be complicated, ie '.tar.gz' or '.tgz' will both be 'application/gzip' mimetype
+				// but so will '.gz' files which are not tarballs.  We need to check the filename as well.
+				if (handler === 'gzip' && (resolvedPath.endsWith('.tar.gz') || resolvedPath.endsWith('.tgz'))) {
+					handler = 'tar/gz';
+				}
+				else if (handler === 'bzip2' && resolvedPath.endsWith('.tar.bz2')) {
+					handler = 'tar/bzip2';
+				}
+				else if (handler === 'xz' && resolvedPath.endsWith('.tar.xz')) {
+					handler = 'tar/xz';
+				}
+
+				if (!availableExtractors.includes(handler)) {
+					// Install this handler on the server
+					let source = handlerSources[handler] || null;
+					if (!source) {
+						return res.json({
+							success: false,
+							error: `No installation source found for missing extractor: ${handler}`
+						});
+					}
+
+					await cmdRunner(host, buildRemoteExec(source).cmd);
+				}
+
+				const cmdExtract = cmdExtracts[handler] || null;
+				if (!cmdExtract) {
+					return res.json({
+						success: false,
+						error: `No extraction command found for handler: ${handler}`
+					});
+				}
+
+				// Finally, extract the archive
+				cmdRunner(host, cmdExtract).then(async output => {
+					logger.info('Extracted archive successfully:', resolvedPath);
+					res.json({
+						success: true,
+						message: 'Archive extracted successfully'
+					});
+				})
+				.catch(e => {
+					logger.error('Extract archive error:', e);
+					return res.json({
+						success: false,
+						error: `Cannot extract archive: ${e.error?.message || e.message || 'Unknown error'}`
+					});
+				});
+			})
+			.catch(e => {
 				return res.json({
 					success: false,
-					error: `No extraction command found for handler: ${handler}`
-				});
-			}
-
-			// Finally, extract the archive
-			cmdRunner(host, cmdExtract).then(async output => {
-				logger.info('Extracted archive successfully:', path);
-				res.json({
-					success: true,
-					message: 'Archive extracted successfully'
+					error: `Cannot extract archive: ${e.error.message}`
 				});
 			});
 		})
 		.catch(e => {
+			logger.error('Failed to resolve symlink:', e);
 			return res.json({
 				success: false,
-				error: `Cannot extract archive: ${e.error.message}`
+				error: `Cannot resolve symlink: ${e.error?.message || e.message || 'Unknown error'}`
+			});
+		});
+	});
+});
+
+/**
+ * Create a zip archive from a folder
+ */
+router.post('/:host/zip', validate_session, (req, res) => {
+	const host = req.params.host;
+	const folderPath = req.query.path;
+
+	if (!folderPath) {
+		return res.json({
+			success: false,
+			error: 'Please enter a folder path'
+		});
+	}
+
+	Host.count({ where: { ip: host } }).then(count => {
+		if (count === 0) {
+			return res.json({
+				success: false,
+				error: 'Requested host is not in the configured HOSTS list'
+			});
+		}
+
+		logger.info('Creating tar.gz archive for folder:', folderPath);
+
+		const path_obj = require('path');
+		
+		// Check if source is a symlink and resolve it
+		const checkSymlinkCmd = `[ -h "${folderPath}" ] && readlink -f "${folderPath}" || echo "${folderPath}"`;
+		
+		cmdRunner(host, checkSymlinkCmd).then(result => {
+			const targetPath = result.stdout.trim();
+			const folderName = path_obj.basename(targetPath);
+			const parentDir = path_obj.dirname(targetPath);
+			const archiveFileName = `${folderName}.tar.gz`;
+			const archiveFilePath = path_obj.join(parentDir, archiveFileName);
+
+			logger.debug('Archiving target:', targetPath);
+
+			// Create tar.gz archive using tar command (universally available on Linux)
+			// -czf: create, compress with gzip, file
+			// -C: change to directory first
+			const cmd = `cd "${parentDir}" && tar -czf "${archiveFileName}" "${folderName}"`;
+
+			cmdRunner(host, cmd).then(() => {
+				logger.info('Tar.gz archive created successfully:', archiveFilePath);
+				res.json({
+					success: true,
+					message: 'Archive created successfully',
+					archivePath: archiveFilePath
+				});
+			})
+			.catch(e => {
+				logger.error('Archive creation error:', e);
+				return res.json({
+					success: false,
+					error: `Cannot create archive: ${e.error?.message || e.message || 'Unknown error'}`
+				});
+			});
+		})
+		.catch(e => {
+			logger.error('Failed to resolve path:', e);
+			return res.json({
+				success: false,
+				error: `Cannot resolve path: ${e.error?.message || e.message || 'Unknown error'}`
+			});
+		});
+	});
+});
+
+/**
+ * Duplicate/clone a file or folder on the target host
+ */
+router.post('/:host/duplicate', validate_session, (req, res) => {
+	const host = req.params.host;
+	const filePath = req.query.path;
+
+	if (!filePath) {
+		return res.json({
+			success: false,
+			error: 'Please enter a file path'
+		});
+	}
+
+	Host.count({ where: { ip: host } }).then(count => {
+		if (count === 0) {
+			return res.json({
+				success: false,
+				error: 'Requested host is not in the configured HOSTS list'
+			});
+		}
+
+		logger.info('Duplicating file/folder:', filePath);
+
+		const path_obj = require('path');
+		
+		// First check if the source is a symlink
+		const checkSymlinkCmd = `[ -h "${filePath}" ] && echo "true" || echo "false"`;
+		
+		cmdRunner(host, checkSymlinkCmd).then(result => {
+			const isSymlink = result.stdout.trim() === 'true';
+			
+			if (isSymlink) {
+				// For symlinks: copy the target file and create a new symlink
+				logger.debug('Source is a symlink, will copy target and create new symlink');
+				
+				const resolveCmd = `readlink -f "${filePath}"`;
+				cmdRunner(host, resolveCmd).then(resolveResult => {
+					const targetPath = resolveResult.stdout.trim();
+					const targetDir = path_obj.dirname(targetPath);
+					const targetBaseName = path_obj.basename(targetPath);
+					
+					// Generate new name for the copied target file
+					const parts = targetBaseName.split('.');
+					let newTargetName;
+					
+					if (targetBaseName.includes('.') && parts.length > 1) {
+						const ext = '.' + parts.pop();
+						const nameWithoutExt = parts.join('.');
+						newTargetName = `${nameWithoutExt}_copy${ext}`;
+					} else {
+						newTargetName = `${targetBaseName}_copy`;
+					}
+					
+					const newTargetPath = path_obj.join(targetDir, newTargetName);
+					
+					// Generate new symlink name in the original directory
+					const symlinkDir = path_obj.dirname(filePath);
+					const symlinkBaseName = path_obj.basename(filePath);
+					const symlinkParts = symlinkBaseName.split('.');
+					let newSymlinkName;
+					
+					if (symlinkBaseName.includes('.') && symlinkParts.length > 1) {
+						const ext = '.' + symlinkParts.pop();
+						const nameWithoutExt = symlinkParts.join('.');
+						newSymlinkName = `${nameWithoutExt}_copy${ext}`;
+					} else {
+						newSymlinkName = `${symlinkBaseName}_copy`;
+					}
+					
+					const newSymlinkPath = path_obj.join(symlinkDir, newSymlinkName);
+					
+					logger.debug('Copying target:', targetPath, '->', newTargetPath);
+					logger.debug('Creating symlink:', newSymlinkPath, '->', newTargetPath);
+					
+					// Copy the target file and create new symlink
+					const cmd = `cp -r "${targetPath}" "${newTargetPath}" && ` +
+						`chown -R $(stat -c%U "${targetPath}"):$(stat -c%G "${targetPath}") "${newTargetPath}" && ` +
+						`ln -s "${newTargetPath}" "${newSymlinkPath}"`;
+					
+					cmdRunner(host, cmd).then(() => {
+						logger.info('Symlink duplicated successfully. Target copied:', targetPath, '->', newTargetPath, 'New symlink:', newSymlinkPath);
+						res.json({
+							success: true,
+							message: 'File/folder duplicated successfully',
+							newPath: newSymlinkPath,
+							targetPath: newTargetPath
+						});
+					})
+					.catch(e => {
+						logger.error('Duplicate symlink error:', e);
+						return res.json({
+							success: false,
+							error: `Cannot duplicate file/folder: ${e.error?.message || e.message || 'Unknown error'}`
+						});
+					});
+				})
+				.catch(e => {
+					logger.error('Failed to resolve symlink:', e);
+					return res.json({
+						success: false,
+						error: `Cannot resolve symlink: ${e.error?.message || e.message || 'Unknown error'}`
+					});
+				});
+			} else {
+				// For regular files/folders: just copy normally
+				const dirPath = path_obj.dirname(filePath);
+				const baseName = path_obj.basename(filePath);
+				
+				// Generate a new name with _copy suffix
+				let newName, newPath;
+				const parts = baseName.split('.');
+				
+				if (baseName.includes('.') && parts.length > 1) {
+					// If file has extension, insert _copy before extension
+					const ext = '.' + parts.pop();
+					const nameWithoutExt = parts.join('.');
+					newName = `${nameWithoutExt}_copy${ext}`;
+				} else {
+					// If no extension, just append _copy
+					newName = `${baseName}_copy`;
+				}
+				
+				newPath = path_obj.join(dirPath, newName);
+
+				logger.debug('Duplicating regular file:', filePath, 'to:', newPath);
+
+				// Use cp -r for recursive copying
+				const cmd = `cp -r "${filePath}" "${newPath}" && chown -R $(stat -c%U "$(dirname "${filePath}")"):$(stat -c%G "$(dirname "${filePath}")") "${newPath}"`;
+
+				cmdRunner(host, cmd).then(() => {
+					logger.info('File/folder duplicated successfully:', filePath, '->', newPath);
+					res.json({
+						success: true,
+						message: 'File/folder duplicated successfully',
+						newPath: newPath
+					});
+				})
+				.catch(e => {
+					logger.error('Duplicate file/folder error:', e);
+					return res.json({
+						success: false,
+						error: `Cannot duplicate file/folder: ${e.error?.message || e.message || 'Unknown error'}`
+					});
+				});
+			}
+		})
+		.catch(e => {
+			logger.error('Failed to check symlink status:', e);
+			return res.json({
+				success: false,
+				error: `Cannot check file type: ${e.error?.message || e.message || 'Unknown error'}`
+			});
+		});
+	});
+});
+
+/**
+ * Move/relocate a file or folder on the target host
+ * Supports both full paths and relative paths (relative to basePath)
+ * Resolves symlinks to prevent breaking them
+ */
+router.post('/:host/move', validate_session, (req, res) => {
+	const host = req.params.host;
+	const oldPath = req.query.oldPath;
+	const destinationInput = req.query.destination;
+	const basePath = req.query.basePath || '';
+
+	if (!oldPath || !destinationInput) {
+		return res.json({
+			success: false,
+			error: 'Old path and destination are required'
+		});
+	}
+
+	Host.count({ where: { ip: host } }).then(count => {
+		if (count === 0) {
+			return res.json({
+				success: false,
+				error: 'Requested host is not in the configured HOSTS list'
+			});
+		}
+
+		logger.info('Moving file/folder:', oldPath, 'to:', destinationInput, 'basePath:', basePath);
+
+		const path_obj = require('path');
+		
+		// Determine the actual destination path
+		let newPath = destinationInput;
+		
+		// If the destination doesn't start with '/', it's relative to the current directory
+		if (!newPath.startsWith('/')) {
+			// Get the base path from the old path's directory
+			const oldDir = path_obj.dirname(oldPath);
+			newPath = path_obj.join(oldDir, newPath);
+		}
+		
+		// Normalize the path
+		newPath = newPath.replace(/\/+/g, '/');
+
+		// Validate that both old and new paths are within the basePath (if basePath is provided)
+		if (basePath) {
+			const normalizedBasePath = path_obj.normalize(basePath).replace(/\/+/g, '/');
+			const normalizedOldPath = path_obj.normalize(oldPath).replace(/\/+/g, '/');
+			const normalizedNewPath = path_obj.normalize(newPath).replace(/\/+/g, '/');
+			
+			// Check if oldPath is within basePath
+			if (!normalizedOldPath.startsWith(normalizedBasePath + '/') && normalizedOldPath !== normalizedBasePath) {
+				return res.json({
+					success: false,
+					error: `Source path is outside the base directory: ${normalizedBasePath}`
+				});
+			}
+			
+			// Check if newPath would be within basePath
+			if (!normalizedNewPath.startsWith(normalizedBasePath + '/') && normalizedNewPath !== normalizedBasePath) {
+				return res.json({
+					success: false,
+					error: `Cannot move files outside the base directory: ${normalizedBasePath}`
+				});
+			}
+		}
+
+		logger.debug('Resolved destination path:', newPath);
+
+		// Use mv command to move (works on both files and symlinks)
+		const cmd = `mv "${oldPath}" "${newPath}"`;
+		
+		cmdRunner(host, cmd).then(() => {
+			logger.info('File/folder moved successfully:', oldPath, '->', newPath);
+			res.json({
+				success: true,
+				message: 'File/folder moved successfully',
+				newPath: newPath
+			});
+		})
+		.catch(e => {
+			logger.error('Move file/folder error:', e);
+			return res.json({
+				success: false,
+				error: `Cannot move file/folder: ${e.error?.message || e.message || 'Unknown error'}`
 			});
 		});
 	});

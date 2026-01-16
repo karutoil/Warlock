@@ -1,0 +1,3672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warlock - Server Details</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/frontend.css">
+    <link rel="stylesheet" href="/assets/themes.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/material-darker.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/shell/shell.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-luxon/1.3.1/chartjs-adapter-luxon.min.js"></script>
+    <script src="/assets/common.js"></script>
+</head>
+<body>
+    <%- include('partials/nav.ejs') %>
+
+    <!-- Modals at top level for proper fixed positioning -->
+    <div id="fileEditorModal" class="modal wide">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="fileEditorTitle"><i class="fas fa-edit"></i> Edit File</h3>
+                <button class="modal-close" onclick="closeFileModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="fileEditorContainer"></div>
+                <textarea id="fileEditorTextarea" style="display: none;" placeholder="File content will appear here..."></textarea>
+                <div id="fileEditorStatus" class="info-message" style="display:none; margin-top: 0.5rem;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-save" id="fileEditorSaveBtn" onclick="saveFileEdits()">
+                    <i class="fas fa-save"></i>
+                    Save Changes
+                </button>
+                <button class="action-download" id="fileEditorDownloadBtn" onclick="downloadCurrentFile()" style="display:none;">
+                    <i class="fas fa-download"></i>
+                    Download Instead
+                </button>
+                <button class="action-cancel" onclick="closeFileModal()">
+                    <i class="fas fa-times"></i>
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="compressedFileModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="compressedFileTitle"><i class="fas fa-file-archive"></i> Compressed File</h3>
+                <button class="modal-close" onclick="closeCompressedFileModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1.5rem;">
+                    This is a compressed file. Would you like to download it or extract it?
+                </p>
+                <div id="compressedFileStatus" style="display:none; margin-bottom: 1rem;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-download" id="compressedFileDownloadBtn" onclick="downloadCompressedFile()">
+                    <i class="fas fa-download"></i>
+                    Download
+                </button>
+                <button class="action-create" id="compressedFileExtractBtn" onclick="extractCompressedFile()">
+                    <i class="fas fa-box-open"></i>
+                    Extract
+                </button>
+                <button class="action-cancel" onclick="closeCompressedFileModal()">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal for Delete and Other Actions -->
+    <div id="confirmationModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="confirmationTitle"><i class="fas fa-exclamation-triangle"></i> Confirm Action</h3>
+                <button class="modal-close" onclick="closeConfirmationModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmationMessage" style="margin-bottom: 1.5rem;"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="action-remove" id="confirmationConfirmBtn" onclick="executeConfirmation()">
+                    <i class="fas fa-check"></i>
+                    Confirm
+                </button>
+                <button class="action-cancel" onclick="closeConfirmationModal()">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Input Modal for File Operations -->
+    <div id="fileActionModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="fileActionTitle"><i class="fas fa-file"></i> File Action</h3>
+                <button class="modal-close" onclick="closeFileActionModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <label id="fileActionLabel" style="display: block; margin-bottom: 0.5rem; font-weight: 500;"></label>
+                <input type="text" id="fileActionInput" placeholder="" style="width: 100%; padding: 0.5rem; border: 1px solid #0096ff; border-radius: 4px; background: #1a1a2e; color: #0096ff; font-family: monospace;">
+                <div id="fileActionHint" style="display: none; margin-top: 0.5rem; font-size: 0.85rem; color: #0096ff; opacity: 0.7;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-save" id="fileActionConfirmBtn" onclick="confirmFileAction()">
+                    <i class="fas fa-check"></i>
+                    Confirm
+                </button>
+                <button class="action-cancel" onclick="closeFileActionModal()">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Browser Context Menu -->
+    <div id="fileContextMenu" class="context-menu" style="display: none;">
+        <button class="context-menu-item" id="contextEdit">
+            <i class="fas fa-edit"></i>
+            <span>Edit</span>
+        </button>
+        <button class="context-menu-item" id="contextDownload">
+            <i class="fas fa-download"></i>
+            <span>Download</span>
+        </button>
+        <button class="context-menu-item" id="contextCopy">
+            <i class="fas fa-copy"></i>
+            <span>Copy</span>
+        </button>
+        <button class="context-menu-item" id="contextMove">
+            <i class="fas fa-arrows-alt"></i>
+            <span>Move</span>
+        </button>
+        <button class="context-menu-item" id="contextRename">
+            <i class="fas fa-pencil-alt"></i>
+            <span>Rename</span>
+        </button>
+        <button class="context-menu-item" id="contextZip">
+            <i class="fas fa-file-zipper"></i>
+            <span>Zip Folder</span>
+        </button>
+        <button class="context-menu-item" id="contextExtract">
+            <i class="fas fa-box-open"></i>
+            <span>Extract</span>
+        </button>
+        <button class="context-menu-item action-remove" id="contextDelete">
+            <i class="fas fa-trash"></i>
+            <span>Delete</span>
+        </button>
+        <div class="context-menu-separator"></div>
+        <button class="context-menu-item" id="contextUpload">
+            <i class="fas fa-upload"></i>
+            <span>Upload File</span>
+        </button>
+    </div>
+
+    <div class="main-container" style="grid-template-columns: 1fr; max-width: 1600px;">
+        <main class="content-area">
+            <!-- Server Header -->
+            <div class="server-header">
+                <div class="server-header-top">
+                    <div class="server-header-info">
+                        <div class="server-header-icon" id="serverIcon">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="server-header-details">
+                            <h1 id="serverName">Loading...</h1>
+                            <p><i class="fas fa-network-wired"></i> Host: <span id="serverHost">-</span></p>
+                            <p><i class="fas fa="gamepad"></i> Game: <span id="serverGame">-</span></p>
+                        </div>
+                    </div>
+                    <div class="server-header-actions">
+                        <button class="server-header-btn" onclick="window.location.href='/servers'">
+                            <i class="fas fa-arrow-left"></i> Back to Servers
+                        </button>
+                        <button class="server-header-btn start" id="startBtn" style="display: none;">
+                            <i class="fas fa-play"></i> Start
+                        </button>
+                        <button class="server-header-btn stop" id="stopBtn" style="display: none;">
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                        <button class="server-header-btn" id="restartBtn">
+                            <i class="fas fa-redo"></i> Restart
+                        </button>
+                    </div>
+                </div>
+                <div class="server-stats-bar">
+                    <div class="server-stat-item">
+                        <span class="server-stat-item-label">Status</span>
+                        <span class="server-stat-item-value" id="statStatus">-</span>
+                    </div>
+                    <div class="server-stat-item">
+                        <span class="server-stat-item-label">Players</span>
+                        <span class="server-stat-item-value" id="statPlayers">0 / 0</span>
+                    </div>
+                    <div class="server-stat-item">
+                        <span class="server-stat-item-label">CPU Usage</span>
+                        <span class="server-stat-item-value" id="statCPU">0%</span>
+                    </div>
+                    <div class="server-stat-item">
+                        <span class="server-stat-item-label">Memory</span>
+                        <span class="server-stat-item-value" id="statMemory">0 MB</span>
+                    </div>
+                    <div class="server-stat-item">
+                        <span class="server-stat-item-label">Port</span>
+                        <span class="server-stat-item-value" id="statPort">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs-container">
+                <div class="tabs-header">
+                    <button class="tab-btn active" data-tab="console">
+                        <i class="fas fa-terminal"></i> Console
+                    </button>
+                    <button class="tab-btn" data-tab="stats">
+                        <i class="fas fa-chart-line"></i> Statistics
+                    </button>
+                    <button class="tab-btn" data-tab="files">
+                        <i class="fas fa-folder"></i> Files
+                    </button>
+                    <button class="tab-btn" data-tab="backups">
+                        <i class="fas fa-floppy-disk"></i> Backups
+                    </button>
+                    <button class="tab-btn" data-tab="configure">
+                        <i class="fas fa-sliders-h"></i> Configure
+                    </button>
+                    <button class="tab-btn" data-tab="logs">
+                        <i class="fas fa-align-justify"></i> Logs
+                    </button>
+                    <button class="tab-btn" data-tab="settings">
+                        <i class="fas fa-cog"></i> Settings
+                    </button>
+                </div>
+
+                <div class="tabs-content">
+                    <!-- Console Tab -->
+                    <div class="tab-panel active" id="console">
+                        <div class="quick-actions">
+                            <div class="quick-action-card" onclick="handleQuickAction('backup')">
+                                <i class="fas fa-save"></i>
+                                <h4>Create Backup</h4>
+                                <p>Backup server data</p>
+                            </div>
+                            <div class="quick-action-card" onclick="handleQuickAction('update')">
+                                <i class="fas fa-download"></i>
+                                <h4>Update Server</h4>
+                                <p>Check for updates</p>
+                            </div>
+                            <div class="quick-action-card" onclick="handleQuickAction('logs')">
+                                <i class="fas fa-file-alt"></i>
+                                <h4>View Logs</h4>
+                                <p>Server log files</p>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; align-items: center;">
+                            <span id="consoleStreamStatus" style="opacity: 0.7; font-size: 0.9rem;">
+                                <i class="fas fa-circle" style="color: #00d4aa;"></i> Live
+                            </span>
+                            <button class="server-header-btn" id="consoleClearBtn" onclick="clearConsole()" style="margin-left: auto;">
+                                <i class="fas fa-eraser"></i> Clear
+                            </button>
+                        </div>
+
+                        <div class="console-container">
+                            <div class="console-output" id="consoleOutput">
+                                <div class="console-output-line">[INFO] Console initializing...</div>
+                            </div>
+                            <div class="console-input-area">
+                                <input type="text" class="console-input" id="consoleInput" placeholder="Enter command...">
+                                <button class="console-send-btn" onclick="sendConsoleCommand()">
+                                    <i class="fas fa-paper-plane"></i> Send
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Statistics Tab -->
+                    <div class="tab-panel" id="stats">
+                        <div style="margin-bottom: 20px; text-align: center; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                            <button class="timeframe-btn active" data-timeframe="hour" onclick="loadMetricsWithTimeframe('hour')">Hour</button>
+                            <button class="timeframe-btn" data-timeframe="day" onclick="loadMetricsWithTimeframe('day')">Day</button>
+                            <button class="timeframe-btn" data-timeframe="week" onclick="loadMetricsWithTimeframe('week')">Week</button>
+                            <button class="timeframe-btn" data-timeframe="month" onclick="loadMetricsWithTimeframe('month')">Month</button>
+                            <button class="timeframe-btn" data-timeframe="3month" onclick="loadMetricsWithTimeframe('3month')">3 Months</button>
+                            <button class="timeframe-btn" data-timeframe="6month" onclick="loadMetricsWithTimeframe('6month')">6 Months</button>
+                            <button class="timeframe-btn" data-timeframe="year" onclick="loadMetricsWithTimeframe('year')">Year</button>
+                        </div>
+                        <div class="stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                            <div class="stat-chart-card" style="height: 300px; padding: 15px; background: rgba(26,26,46,0.5); border: 1px solid #0096ff; border-radius: 8px;">
+                                <h4 style="margin: 0 0 10px 0;"><i class="fas fa-microchip"></i> CPU Usage (%)</h4>
+                                <div class="chart-wrapper" style="position: relative; height: 250px;">
+                                    <canvas id="cpuChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="stat-chart-card" style="height: 300px; padding: 15px; background: rgba(26,26,46,0.5); border: 1px solid #0096ff; border-radius: 8px;">
+                                <h4 style="margin: 0 0 10px 0;"><i class="fas fa-memory"></i> Memory Usage (MB)</h4>
+                                <div class="chart-wrapper" style="position: relative; height: 250px;">
+                                    <canvas id="memoryChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="stat-chart-card" style="height: 300px; padding: 15px; background: rgba(26,26,46,0.5); border: 1px solid #0096ff; border-radius: 8px;">
+                                <h4 style="margin: 0 0 10px 0;"><i class="fas fa-users"></i> Player Count</h4>
+                                <div class="chart-wrapper" style="position: relative; height: 250px;">
+                                    <canvas id="playersChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="stat-chart-card" style="height: 300px; padding: 15px; background: rgba(26,26,46,0.5); border: 1px solid #0096ff; border-radius: 8px;">
+                                <h4 style="margin: 0 0 10px 0;"><i class="fas fa-heartbeat"></i> Server Status</h4>
+                                <div class="chart-wrapper" style="position: relative; height: 250px;">
+                                    <canvas id="statusChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="stat-chart-card" style="grid-column: 1 / -1; height: 300px; padding: 15px; background: rgba(26,26,46,0.5); border: 1px solid #0096ff; border-radius: 8px;">
+                                <h4 style="margin: 0 0 10px 0;"><i class="fas fa-tachometer-alt"></i> Response Time (ms)</h4>
+                                <div class="chart-wrapper" style="position: relative; height: 250px;">
+                                    <canvas id="responseTimeChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Files Tab -->
+                    <div class="tab-panel" id="files">
+                        <div class="file-browser">
+                            <div class="file-browser-header">
+                                <button class="server-header-btn" onclick="navigateUp()">
+                                    <i class="fas fa-arrow-up"></i>
+                                </button>
+                                <input type="text" class="file-browser-path" id="currentPath" value="/" readonly>
+                                <button class="server-header-btn" onclick="refreshFiles()">
+                                    <i class="fas fa-sync"></i>
+                                </button>
+                                <div class="dropdown-container" style="position: relative; display: inline-block;">
+                                    <button class="server-header-btn" id="createItemBtn" onclick="toggleCreateDropdown()">
+                                        <i class="fas fa-plus"></i> Create
+                                    </button>
+                                    <div id="createDropdown" class="dropdown-menu" style="display: none; position: absolute; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 4px; z-index: 100; min-width: 150px; top: 100%; right: 0; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);">
+                                        <button class="dropdown-item" onclick="openNewFileModal()" style="display: block; width: 100%; text-align: left; padding: 0.75rem 1rem; background: none; border: none; color: var(--text-color); cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0, 150, 255, 0.1)'" onmouseout="this.style.background='none'">
+                                            <i class="fas fa-file"></i> New File
+                                        </button>
+                                        <button class="dropdown-item" onclick="openNewFolderModal()" style="display: block; width: 100%; text-align: left; padding: 0.75rem 1rem; background: none; border: none; color: var(--text-color); cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0, 150, 255, 0.1)'" onmouseout="this.style.background='none'">
+                                            <i class="fas fa-folder-plus"></i> New Folder
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="file-list" id="fileList">
+                                <div class="file-item">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    <span>Loading files...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Configure Tab -->
+                    <div class="tab-panel" id="configure">
+                        <div class="info-message" style="margin-bottom: 1.5rem;">
+                            <p>
+                                Below are all configurable options for this game service.<br/>
+                                Settings with a "<i class="fas fa-globe"></i>" icon indicate that the option is shared with all instances of this game,
+                                otherwise the option is unique to this service instance.
+                                <br/><br/>
+                                Changes are applied immediately upon modification.
+                            </p>
+                        </div>
+
+                        <div class="warning-message" id="configureWarningMessage" style="display:none; margin-bottom: 1.5rem;">
+                            <p>
+                                <strong>EDITING IS DISABLED WHILE GAME IS ACTIVE</strong><br/><br/>
+                                Your game is currently running. Configuration changes are read-only.
+                            </p>
+                        </div>
+
+                        <div style="margin-bottom: 1rem;">
+                            <input type="search" placeholder="Quick Filter Configuration Options" id="configureQuickSearch" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-color);"/>
+                        </div>
+
+                        <div id="configurationContainer" style="margin-bottom: 2rem;">
+                            <div style="opacity: 0.7; text-align: center;">Loading configuration options...</div>
+                        </div>
+                    </div>
+
+                    <!-- Logs Tab -->
+                    <div class="tab-panel" id="logs">
+                        <div class="logs-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem;">
+                            <div class="button-group" style="display: flex; gap: 0.5rem;">
+                                <button id="logs-pager-previous" class="server-header-btn disabled">
+                                    <i class="fas fa-angles-left"></i> Previous
+                                </button>
+                                <button id="logs-pager-next" class="server-header-btn disabled">
+                                    Next <i class="fas fa-angles-right"></i>
+                                </button>
+                            </div>
+                            <div style="flex: 1; max-width: 300px;">
+                                <input type="text" id="logsSearchInput" class="form-control" placeholder="Filter logs... (e.g., error, warning)" style="width: 100%; padding: 0.5rem; background: rgba(26, 26, 46, 0.5); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 4px; color: #fff;">
+                            </div>
+                            <div class="button-group" style="display: flex; gap: 0.5rem;">
+                                <button id="logs-mode-hour" class="server-header-btn">
+                                    <i class="fas fa-hourglass"></i> Hourly
+                                </button>
+                                <button id="logs-mode-day" class="server-header-btn">
+                                    <i class="fas fa-calendar"></i> Daily
+                                </button>
+                                <button id="logs-mode-custom" class="server-header-btn">
+                                    <i class="fas fa-clock"></i> Custom
+                                </button>
+                                <button id="logs-mode-live" class="server-header-btn active" style="background: rgba(0, 150, 255, 0.2); border-color: #0096ff;">
+                                    <i class="fas fa-circle-play"></i> LIVE
+                                </button>
+                            </div>
+                        </div>
+                        <div id="logsContainer" class="terminal" style="background: #0a0e27; border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 8px; padding: 1rem; height: 600px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; line-height: 1.5;"></div>
+                        
+                        <!-- Custom Date Range Modal -->
+                        <div id="customLogsModal" class="modal">
+                            <div class="modal-overlay" onclick="closeCustomLogsModal()"></div>
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h3><i class="fas fa-clock"></i> Custom Date Range</h3>
+                                    <button class="modal-close" onclick="closeCustomLogsModal()">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group">
+                                        <label class="form-label" for="customLogsStartDate">Start Date & Time</label>
+                                        <input type="datetime-local" id="customLogsStartDate" class="form-control">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" for="customLogsEndDate">End Date & Time</label>
+                                        <input type="datetime-local" id="customLogsEndDate" class="form-control">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button class="action-start" onclick="applyCustomLogsRange()">
+                                        <i class="fas fa-check"></i> Apply
+                                    </button>
+                                    <button class="action-cancel" onclick="closeCustomLogsModal()">
+                                        <i class="fas fa-times"></i> Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- New File Modal -->
+                    <div id="newFileModal" class="modal">
+                        <div class="modal-overlay" onclick="closeNewFileModal()"></div>
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3><i class="fas fa-file"></i> Create New File</h3>
+                                <button class="modal-close" onclick="closeNewFileModal()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label class="form-label" for="newFileName">File Name</label>
+                                    <input type="text" id="newFileName" class="form-control" placeholder="e.g., config.txt">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="action-primary" onclick="createNewFile()">
+                                    <i class="fas fa-check"></i> Create
+                                </button>
+                                <button class="action-cancel" onclick="closeNewFileModal()">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- New Folder Modal -->
+                    <div id="newFolderModal" class="modal">
+                        <div class="modal-overlay" onclick="closeNewFolderModal()"></div>
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3><i class="fas fa-folder-plus"></i> Create New Folder</h3>
+                                <button class="modal-close" onclick="closeNewFolderModal()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label class="form-label" for="newFolderName">Folder Name</label>
+                                    <input type="text" id="newFolderName" class="form-control" placeholder="e.g., backups">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="action-primary" onclick="createNewFolder()">
+                                    <i class="fas fa-check"></i> Create
+                                </button>
+                                <button class="action-cancel" onclick="closeNewFolderModal()">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings Tab -->
+                    <div class="tab-panel" id="settings">
+                        <div class="settings-section">
+                            <h4><i class="fas fa-cog"></i> Server Options</h4>
+                            <div class="settings-grid" id="serverSettings">
+                                <p style="opacity: 0.7;">Loading settings...</p>
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h4><i class="fas fa-wrench"></i> Service Configuration</h4>
+                            <div class="settings-grid" id="serviceSettings">
+                                <p style="opacity: 0.7;">Loading service configuration...</p>
+                            </div>
+                        </div>
+
+                        <button class="server-header-btn" onclick="saveSettings()" style="margin-top: 1rem;">
+                            <i class="fas fa-save"></i> Save Settings
+                        </button>
+                    </div>
+
+                    <!-- Backups Tab -->
+                    <div class="tab-panel" id="backups">
+                        <div style="margin-bottom: 1.5rem;">
+                            <h4><i class="fas fa-clock"></i> Automated Backups</h4>
+                            <div class="warning-message" id="automatedBackupsDisabledMessage" style="display:none;">
+                                Automatic backups are NOT enabled!
+                            </div>
+                            <div class="success-message" id="automatedBackupsEnabledMessage" style="display:none;">
+                                Automatic backups are enabled.
+                            </div>
+                            <button class="action-edit" id="configureAutoBackupBtn" style="margin-top: 0.5rem;">
+                                <i class="fas fa-clock"></i>
+                                Configure Automatic Backups
+                            </button>
+                        </div>
+
+                        <hr style="border: 1px solid var(--border-color); margin: 1.5rem 0;">
+
+                        <h4><i class="fas fa-save"></i> Current Backups</h4>
+                        <button class="link-control action-upload" id="uploadBtn" style="margin-bottom: 1rem;">
+                            <i class="fas fa-upload"></i>
+                            Upload Backup
+                        </button>
+                        <button class="link-control action-backup" id="performBackupBtn" style="margin-bottom: 1rem;">
+                            <i class="fas fa-floppy-disk"></i>
+                            Backup Now
+                        </button>
+                        <div id="backupsList" style="margin-top: 1rem;">
+                            <div><i class="fas fa-spinner fa-spin"></i> Loading backups...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <%- include('partials/theme-selector.ejs') %>
+
+    <!-- Upload Progress Modal -->
+    <input type="file" id="fileInput" style="display: none;" accept=".tar.gz" />
+
+    <!-- Perform Backup Modal -->
+    <div id="backupModal" class="modal wide">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-floppy-disk"></i> Backup Server</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>
+                        Warning: Performing a backup usually stops the server during the procedure.
+                    </p>
+                </div>
+                <div class="terminal"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-restore" id="confirmBackupBtn">
+                    <i class="fas fa-floppy-disk"></i>
+                    Confirm Backup
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restore Backup Modal -->
+    <div id="restoreModal" class="modal wide">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-undo"></i> Restore Backup</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>
+                        Warning: Restoring a backup will overwrite the current server data!
+                    </p>
+                </div>
+                <div class="terminal"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-restore" id="confirmRestoreBtn">
+                    <i class="fas fa-undo"></i>
+                    Confirm Restore
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-exclamation-triangle"></i> Confirm Deletion</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>This will permanently delete the backup archive!</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-remove" id="confirmDeleteBtn">
+                    <i class="fas fa-trash"></i>
+                    Delete Permanently
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Automatic Backup Configuration Modal -->
+    <div id="autoBackupModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-clock"></i> Automatic Backup Configuration</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="autoBackupSchedule">Schedule</label>
+                    <select id="autoBackupSchedule" name="schedule">
+                        <option value="disabled">Disabled</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="autoBackupWeeklyDayRow">
+                    <label for="autoBackupWeeklyDay">Weekly Day</label>
+                    <select id="autoBackupWeeklyDay" name="weekly_day">
+                        <option value="mon">Monday</option>
+                        <option value="tue">Tuesday</option>
+                        <option value="wed">Wednesday</option>
+                        <option value="thu">Thursday</option>
+                        <option value="fri">Friday</option>
+                        <option value="sat">Saturday</option>
+                        <option value="sun">Sunday</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="autoBackupTime">Time</label>
+                    <input type="time" id="autoBackupTime" name="time" value="02:00">
+                </div>
+
+                <div class="form-group">
+                    <label for="autoBackupKeep">Number of backups to keep</label>
+                    <input type="number" id="autoBackupKeep" name="keep" min="0">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="link-control action-save" id="saveAutoBackupBtn">
+                    <i class="fas fa-save"></i>
+                    Save Configuration
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="renameModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Rename Backup</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="renameNewName">New Name:</label>
+                    <input type="text" id="renameNewName" placeholder="Enter new name..." />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-nav btn-action" id="confirmRename">
+                    <i class="fas fa-edit"></i>
+                    Rename
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Modal -->
+    <div id="updateModal" class="modal wide">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-circle-up"></i> Update Game</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-message">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Warning: Updating a game will pause the game during the procedure.</p>
+                </div>
+                <div class="terminal"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-update" id="confirmUpdateBtn">
+                    <i class="fas fa-circle-up"></i>
+                    Confirm Update
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Automatic Update Configuration Modal -->
+    <div id="autoUpdateModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-clock"></i> Automatic Update Configuration</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="autoUpdateSchedule">Schedule</label>
+                    <select id="autoUpdateSchedule" name="schedule">
+                        <option value="disabled">Disabled</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="autoUpdateWeeklyDayRow">
+                    <label for="autoUpdateWeeklyDay">Weekly Day</label>
+                    <select id="autoUpdateWeeklyDay" name="weekly_day">
+                        <option value="mon">Monday</option>
+                        <option value="tue">Tuesday</option>
+                        <option value="wed">Wednesday</option>
+                        <option value="thu">Thursday</option>
+                        <option value="fri">Friday</option>
+                        <option value="sat">Saturday</option>
+                        <option value="sun">Sunday</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="autoUpdateTime">Time</label>
+                    <input type="time" id="autoUpdateTime" name="time" value="02:00">
+                </div>
+
+                <div class="form-group">
+                    <label for="delayedUpdate">Update if Players Online</label>
+                    <input type="checkbox" id="delayedUpdate" name="delayed_update">
+                    <p class="form-help-text">
+                        If enabled, updates will run even if players are online, with a 1-hour warning.
+                        Otherwise, restart/updates will be skipped if players are detected.
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-save" id="saveAutoUpdateBtn">
+                    <i class="fas fa-save"></i>
+                    Save Configuration
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Automatic Restart Configuration Modal -->
+    <div id="autoRestartModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-power-off"></i> Automatic Restart Configuration</h3>
+                <button class="modal-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="autoRestartSchedule">Schedule</label>
+                    <select id="autoRestartSchedule" name="schedule">
+                        <option value="disabled">Disabled</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="autoRestartWeeklyDayRow">
+                    <label for="autoRestartWeeklyDay">Weekly Day</label>
+                    <select id="autoRestartWeeklyDay" name="weekly_day">
+                        <option value="mon">Monday</option>
+                        <option value="tue">Tuesday</option>
+                        <option value="wed">Wednesday</option>
+                        <option value="thu">Thursday</option>
+                        <option value="fri">Friday</option>
+                        <option value="sat">Saturday</option>
+                        <option value="sun">Sunday</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="autoRestartTime">Time</label>
+                    <input type="time" id="autoRestartTime" name="time" value="02:00">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-save" id="saveAutoRestartBtn">
+                    <i class="fas fa-save"></i>
+                    Save Configuration
+                </button>
+                <button class="action-cancel modal-close">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <%- include('partials/theme-selector.ejs') %>
+    <script>
+        const urlParams = new URLSearchParams(window.location.pathname.split('/server/')[1]);
+        const pathParts = window.location.pathname.split('/');
+        const guid = pathParts[2];
+        const host = pathParts[3];
+        const service = pathParts[4];
+
+        let serverData = null,
+            charts = {},
+            currentPath = '/',
+            currentFilePath = null;
+
+        // Load server data
+        async function loadServerData() {
+            // Don't update if an action is in progress
+            if (isActionInProgress) {
+                console.log('Skipping periodic update - action in progress');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/service/${guid}/${host}/${service}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    serverData = result;
+                    updateServerHeader(result);
+                    updateServerStats(result.service);
+                    
+                    // Load application options for settings
+                    applicationOptions = result.host?.options || [];
+                }
+            } catch (error) {
+                console.error('Error loading server data:', error);
+                showToast('error', 'Failed to load server data');
+            }
+        }
+
+        function updateServerHeader(data) {
+            document.getElementById('serverName').textContent = data.service.service;
+            document.getElementById('serverHost').textContent = renderHostName(data.host.host);
+            document.getElementById('serverGame').textContent = data.app || 'Unknown';
+            
+            // Use app thumbnail instead of icon - use guid which is the app GUID
+            const thumbnailUrl = getAppThumbnail(guid);
+            if (thumbnailUrl) {
+                document.getElementById('serverIcon').innerHTML = `<img src="${thumbnailUrl}" alt="${data.app} Thumbnail" title="${data.app}">`;
+            } else {
+                const icon = renderAppIcon(guid);
+                document.getElementById('serverIcon').innerHTML = icon;
+            }
+
+            // Update action buttons and re-enable them
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const restartBtn = document.getElementById('restartBtn');
+            
+            if (data.service.status === 'running') {
+                if (startBtn) {
+                    startBtn.style.display = 'none';
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<i class="fas fa-play"></i> Start';
+                }
+                if (stopBtn) {
+                    stopBtn.style.display = 'flex';
+                    stopBtn.disabled = false;
+                    stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                }
+            } else {
+                if (startBtn) {
+                    startBtn.style.display = 'flex';
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<i class="fas fa-play"></i> Start';
+                }
+                if (stopBtn) {
+                    stopBtn.style.display = 'none';
+                    stopBtn.disabled = false;
+                    stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+                }
+            }
+            
+            if (restartBtn) {
+                restartBtn.disabled = false;
+                restartBtn.innerHTML = '<i class="fas fa-redo"></i> Restart';
+            }
+        }
+
+        function updateServerStats(service) {
+            document.getElementById('statStatus').textContent = service.status.toUpperCase();
+            document.getElementById('statPlayers').textContent = `${service.player_count || 0} / ${service.max_players || 0}`;
+            document.getElementById('statCPU').textContent = `${service.cpu_usage || 0}%`;
+            document.getElementById('statMemory').textContent = `${service.memory_usage || 0} MB`;
+            document.getElementById('statPort').textContent = service.port || '-';
+            
+            // Update console state based on server status
+            updateConsoleState(service.status);
+        }
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+                
+                btn.classList.add('active');
+                document.getElementById(btn.dataset.tab).classList.add('active');
+
+                // Load tab-specific data
+                if (btn.dataset.tab === 'console') {
+                    // Auto-start console stream when switching to console tab
+                    if (!isConsoleStreaming) {
+                        startConsoleStream();
+                    }
+                } else {
+                    // Stop console stream when switching away from console tab
+                    if (isConsoleStreaming) {
+                        stopConsoleStream();
+                    }
+                    
+                    if (btn.dataset.tab === 'stats') {
+                        loadMetrics();
+                    } else if (btn.dataset.tab === 'files') {
+                        loadFiles(currentPath);
+                    } else if (btn.dataset.tab === 'backups') {
+                        loadBackupsList();
+                        loadAutomaticBackupConfig();
+                    } else if (btn.dataset.tab === 'configure') {
+                        loadConfiguration();
+                    } else if (btn.dataset.tab === 'logs') {
+                        loadLogs();
+                    } else if (btn.dataset.tab === 'settings') {
+                        loadSettings();
+                    } else {
+                        // Stop logs stream when switching away from logs tab
+                        if (logsStreamRequest) {
+                            logsStreamRequest.cancel();
+                            logsStreamRequest = null;
+                        }
+                    }
+                }
+            });
+        });
+
+        // Logs tab functionality
+        let logsMode = 'live';
+        let logsOffset = 1;
+        let logsStreamRequest = null;
+        let logsCustomStart = null;
+        let logsCustomEnd = null;
+        let logsFilterText = '';
+
+        // Filter logs in real-time
+        function filterLogs() {
+            const logsContainer = document.getElementById('logsContainer');
+            const searchText = logsFilterText.toLowerCase();
+            const logLines = logsContainer.querySelectorAll('.line-stdout, .line-stderr');
+            
+            let visibleCount = 0;
+            logLines.forEach(line => {
+                // Skip header lines
+                if (line.classList.contains('log-header')) {
+                    return;
+                }
+                
+                const lineText = line.textContent.toLowerCase();
+                if (!searchText || lineText.includes(searchText)) {
+                    line.style.display = '';
+                    visibleCount++;
+                    
+                    // Highlight matching text
+                    if (searchText) {
+                        const originalText = line.getAttribute('data-original-text') || line.textContent;
+                        if (!line.getAttribute('data-original-text')) {
+                            line.setAttribute('data-original-text', originalText);
+                        }
+                        
+                        const regex = new RegExp(`(${searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                        line.innerHTML = originalText.replace(regex, '<mark style="background: #ffd93d; color: #000; padding: 0 2px; border-radius: 2px;">$1</mark>');
+                    } else {
+                        const originalText = line.getAttribute('data-original-text');
+                        if (originalText) {
+                            line.textContent = originalText;
+                        }
+                    }
+                } else {
+                    line.style.display = 'none';
+                }
+            });
+            
+            // Show message if no results
+            const noResultsMsg = logsContainer.querySelector('.no-filter-results');
+            if (searchText && visibleCount === 0 && !noResultsMsg) {
+                const msg = document.createElement('div');
+                msg.className = 'line-stderr no-filter-results';
+                msg.textContent = `No logs matching "${logsFilterText}"`;
+                logsContainer.appendChild(msg);
+            } else if (noResultsMsg && (!searchText || visibleCount > 0)) {
+                noResultsMsg.remove();
+            }
+        }
+
+        // Search input handler
+        document.getElementById('logsSearchInput')?.addEventListener('input', (e) => {
+            logsFilterText = e.target.value;
+            filterLogs();
+        });
+
+        function loadLogs() {
+            const logsContainer = document.getElementById('logsContainer');
+            const logsPagerPrevBtn = document.getElementById('logs-pager-previous');
+            const logsPagerNextBtn = document.getElementById('logs-pager-next');
+            
+            logsContainer.innerHTML = '';
+
+            if (logsMode === 'live') {
+                // Stop existing stream if any
+                if (logsStreamRequest) {
+                    logsStreamRequest.cancel();
+                    logsStreamRequest = null;
+                }
+                
+                // Start live stream
+                logsStreamRequest = stream(
+                    `/api/service/logs/${guid}/${host}/${service}`,
+                    'GET',
+                    {},
+                    null,
+                    (event, data) => {
+                        terminalOutputHelper(logsContainer, event, data);
+                        // Apply filter to new lines if filter is active
+                        if (logsFilterText) {
+                            filterLogs();
+                        }
+                    }
+                );
+            } else {
+                // Stop stream if switching from live mode
+                if (logsStreamRequest) {
+                    logsStreamRequest.cancel();
+                    logsStreamRequest = null;
+                }
+
+                // Render header message
+                let headerMessage = '';
+                if (logsMode === 'h') {
+                    headerMessage = logsOffset === 1 ? 'Logs for the past hour' : `Hourly logs from ${logsOffset} hours ago`;
+                } else if (logsMode === 'd') {
+                    headerMessage = logsOffset === 1 ? 'Logs for the past day' : `Daily logs from ${logsOffset} days ago`;
+                } else if (logsMode === 'custom') {
+                    const start = new Date(logsCustomStart).toLocaleString();
+                    const end = new Date(logsCustomEnd).toLocaleString();
+                    headerMessage = `Custom logs from ${start} to ${end}`;
+                }
+
+                const headerEntry = document.createElement('div');
+                headerEntry.textContent = headerMessage;
+                headerEntry.className = 'line-stdout';
+                headerEntry.style.cssText = 'opacity: 0.7; margin-bottom: 0.5rem; font-weight: bold;';
+                logsContainer.appendChild(headerEntry);
+
+                // Fetch historical logs
+                let url = `/api/service/logs/${guid}/${host}/${service}?mode=${logsMode}&offset=${logsOffset}`;
+                if (logsMode === 'custom' && logsCustomStart && logsCustomEnd) {
+                    url = `/api/service/logs/${guid}/${host}/${service}?mode=custom&start=${encodeURIComponent(logsCustomStart)}&end=${encodeURIComponent(logsCustomEnd)}`;
+                }
+                fetch(url)
+                    .then(response => response.text())
+                    .then(result => {
+                        if (result.trim() === '') {
+                            const logEntry = document.createElement('div');
+                            logEntry.textContent = 'No logs available for the selected time period.';
+                            logEntry.className = 'line-stderr';
+                            logsContainer.appendChild(logEntry);
+                            return;
+                        }
+                        const lines = result.split('\n');
+                        lines.forEach(line => {
+                            if (line.trim()) {
+                                const logEntry = document.createElement('div');
+                                logEntry.textContent = line;
+                                logEntry.className = 'line-stdout';
+                                logsContainer.appendChild(logEntry);
+                            }
+                        });
+                        // Apply filter after loading logs
+                        if (logsFilterText) {
+                            filterLogs();
+                        }
+                    })
+                    .catch(e => {
+                        const logEntry = document.createElement('div');
+                        logEntry.textContent = `Error fetching logs: ${e.message}`;
+                        logEntry.className = 'line-stderr';
+                        logsContainer.appendChild(logEntry);
+                    });
+            }
+        }
+
+        // Logs mode buttons
+        document.getElementById('logs-mode-live')?.addEventListener('click', () => {
+            if (logsMode !== 'live') {
+                logsMode = 'live';
+                logsOffset = 1;
+                
+                // Update button states
+                document.getElementById('logs-mode-live').classList.add('active');
+                document.getElementById('logs-mode-live').style.cssText = 'background: rgba(0, 150, 255, 0.2); border-color: #0096ff;';
+                document.getElementById('logs-mode-hour').classList.remove('active');
+                document.getElementById('logs-mode-hour').style.cssText = '';
+                document.getElementById('logs-mode-day').classList.remove('active');
+                document.getElementById('logs-mode-day').style.cssText = '';
+                document.getElementById('logs-mode-custom').classList.remove('active');
+                document.getElementById('logs-mode-custom').style.cssText = '';
+                
+                // Disable pager buttons
+                document.getElementById('logs-pager-previous').classList.add('disabled');
+                document.getElementById('logs-pager-next').classList.add('disabled');
+                
+                loadLogs();
+            }
+        });
+
+        document.getElementById('logs-mode-hour')?.addEventListener('click', () => {
+            if (logsMode !== 'h') {
+                logsMode = 'h';
+                logsOffset = 1;
+                
+                // Update button states
+                document.getElementById('logs-mode-hour').classList.add('active');
+                document.getElementById('logs-mode-hour').style.cssText = 'background: rgba(0, 150, 255, 0.2); border-color: #0096ff;';
+                document.getElementById('logs-mode-live').classList.remove('active');
+                document.getElementById('logs-mode-live').style.cssText = '';
+                document.getElementById('logs-mode-day').classList.remove('active');
+                document.getElementById('logs-mode-day').style.cssText = '';
+                document.getElementById('logs-mode-custom').classList.remove('active');
+                document.getElementById('logs-mode-custom').style.cssText = '';
+                
+                // Enable pager buttons
+                document.getElementById('logs-pager-previous').classList.remove('disabled');
+                document.getElementById('logs-pager-next').classList.add('disabled');
+                
+                loadLogs();
+            }
+        });
+
+        document.getElementById('logs-mode-day')?.addEventListener('click', () => {
+            if (logsMode !== 'd') {
+                logsMode = 'd';
+                logsOffset = 1;
+                
+                // Update button states
+                document.getElementById('logs-mode-day').classList.add('active');
+                document.getElementById('logs-mode-day').style.cssText = 'background: rgba(0, 150, 255, 0.2); border-color: #0096ff;';
+                document.getElementById('logs-mode-live').classList.remove('active');
+                document.getElementById('logs-mode-live').style.cssText = '';
+                document.getElementById('logs-mode-hour').classList.remove('active');
+                document.getElementById('logs-mode-hour').style.cssText = '';
+                document.getElementById('logs-mode-custom').classList.remove('active');
+                document.getElementById('logs-mode-custom').style.cssText = '';
+                
+                // Enable pager buttons
+                document.getElementById('logs-pager-previous').classList.remove('disabled');
+                document.getElementById('logs-pager-next').classList.add('disabled');
+                
+                loadLogs();
+            }
+        });
+
+        document.getElementById('logs-mode-custom')?.addEventListener('click', () => {
+            // Open custom date range modal
+            document.getElementById('customLogsModal').classList.add('show');
+            
+            // Set default values (last 24 hours)
+            const now = new Date();
+            const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            
+            document.getElementById('customLogsEndDate').value = now.toISOString().slice(0, 16);
+            document.getElementById('customLogsStartDate').value = yesterday.toISOString().slice(0, 16);
+        });
+
+        function closeCustomLogsModal() {
+            document.getElementById('customLogsModal').classList.remove('show');
+        }
+
+        function applyCustomLogsRange() {
+            const startDate = document.getElementById('customLogsStartDate').value;
+            const endDate = document.getElementById('customLogsEndDate').value;
+            
+            if (!startDate || !endDate) {
+                showToast('error', 'Please select both start and end dates');
+                return;
+            }
+            
+            if (new Date(startDate) >= new Date(endDate)) {
+                showToast('error', 'Start date must be before end date');
+                return;
+            }
+            
+            // Convert datetime-local format to journalctl format: "YYYY-MM-DD HH:MM:SS"
+            const formatForJournalctl = (dateTimeStr) => {
+                return dateTimeStr.replace('T', ' ') + ':00';
+            };
+            
+            logsMode = 'custom';
+            logsCustomStart = formatForJournalctl(startDate);
+            logsCustomEnd = formatForJournalctl(endDate);
+            
+            // Update button states
+            document.getElementById('logs-mode-custom').classList.add('active');
+            document.getElementById('logs-mode-custom').style.cssText = 'background: rgba(0, 150, 255, 0.2); border-color: #0096ff;';
+            document.getElementById('logs-mode-live').classList.remove('active');
+            document.getElementById('logs-mode-live').style.cssText = '';
+            document.getElementById('logs-mode-hour').classList.remove('active');
+            document.getElementById('logs-mode-hour').style.cssText = '';
+            document.getElementById('logs-mode-day').classList.remove('active');
+            document.getElementById('logs-mode-day').style.cssText = '';
+            
+            // Disable pager buttons for custom mode
+            document.getElementById('logs-pager-previous').classList.add('disabled');
+            document.getElementById('logs-pager-next').classList.add('disabled');
+            
+            closeCustomLogsModal();
+            loadLogs();
+        }
+
+        // Pager buttons
+        document.getElementById('logs-pager-previous')?.addEventListener('click', function() {
+            if (!this.classList.contains('disabled')) {
+                logsOffset += 1;
+                document.getElementById('logs-pager-next').classList.remove('disabled');
+                loadLogs();
+            }
+        });
+
+        document.getElementById('logs-pager-next')?.addEventListener('click', function() {
+            if (!this.classList.contains('disabled') && logsOffset > 1) {
+                logsOffset -= 1;
+                if (logsOffset === 1) {
+                    this.classList.add('disabled');
+                }
+                loadLogs();
+            }
+        });
+
+        // Server control actions
+        document.getElementById('startBtn')?.addEventListener('click', () => executeAction('start'));
+        document.getElementById('stopBtn')?.addEventListener('click', () => executeAction('stop'));
+        document.getElementById('restartBtn')?.addEventListener('click', () => executeAction('restart'));
+
+        let isActionInProgress = false;
+        let isFileOperationInProgress = false;
+        let fileRefreshInterval = null;
+
+        async function executeAction(action) {
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const restartBtn = document.getElementById('restartBtn');
+            
+            // Mark action in progress to prevent periodic updates from interfering
+            isActionInProgress = true;
+            
+            // Save original button states
+            let targetBtn, originalHTML;
+            let expectedStatus;
+            
+            if (action === 'start') {
+                targetBtn = startBtn;
+                originalHTML = targetBtn?.innerHTML;
+                expectedStatus = 'running';
+                if (targetBtn) {
+                    targetBtn.disabled = true;
+                    targetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+                }
+            } else if (action === 'stop') {
+                targetBtn = stopBtn;
+                originalHTML = targetBtn?.innerHTML;
+                expectedStatus = 'stopped';
+                if (targetBtn) {
+                    targetBtn.disabled = true;
+                    targetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+                }
+            } else if (action === 'restart') {
+                targetBtn = restartBtn;
+                originalHTML = targetBtn?.innerHTML;
+                expectedStatus = 'running';
+                if (targetBtn) {
+                    targetBtn.disabled = true;
+                    targetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting...';
+                }
+            }
+            
+            // Disable all control buttons
+            if (startBtn) startBtn.disabled = true;
+            if (stopBtn) stopBtn.disabled = true;
+            if (restartBtn) restartBtn.disabled = true;
+            
+            // Ensure DOM is updated before making the request
+            await new Promise(resolve => setTimeout(resolve, 0));
+            
+            try {
+                const response = await fetch('/api/service/control', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({guid, host, service, action})
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showToast('success', `Server ${action} command sent`);
+                    
+                    // Wait longer before polling to ensure service has time to transition
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    // Poll until server reaches expected status
+                    let statusReached = false;
+                    let attempts = 0;
+                    const maxAttempts = 20; // Max 20 attempts (20 seconds with 1 second interval)
+                    
+                    while (!statusReached && attempts < maxAttempts) {
+                        try {
+                            const statusResponse = await fetch(`/api/service/${guid}/${host}/${service}`);
+                            const statusResult = await statusResponse.json();
+                            
+                            if (statusResult.success) {
+                                const currentStatus = statusResult.service.status;
+                                console.log(`[${new Date().toLocaleTimeString()}] Status check - Expected: "${expectedStatus}", Got: "${currentStatus}", Attempt: ${attempts + 1}`);
+                                
+                                // Check if we've reached the expected status
+                                if (currentStatus === expectedStatus) {
+                                    statusReached = true;
+                                    serverData = statusResult;
+                                    // ONLY update header when action completes
+                                    updateServerHeader(statusResult);
+                                    updateServerStats(statusResult.service);
+                                    console.log(`✓ Status transition complete to "${expectedStatus}"`);
+                                    showToast('success', `Server ${action} completed`);
+                                    
+                                    // Reconnect console if server is now running and we're on console tab
+                                    if (currentStatus === 'running' && document.getElementById('console').classList.contains('active')) {
+                                        console.log('Reconnecting console stream...');
+                                        await new Promise(resolve => setTimeout(resolve, 500));
+                                        if (!isConsoleStreaming) {
+                                            startConsoleStream();
+                                        }
+                                    }
+                                    
+                                    break;
+                                }
+                            }
+                        } catch (pollError) {
+                            console.error('Error polling status:', pollError);
+                        }
+                        
+                        attempts++;
+                        if (!statusReached && attempts < maxAttempts) {
+                            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before next poll
+                        }
+                    }
+                    
+                    if (!statusReached) {
+                        console.warn(`✗ Status update timeout after ${attempts} attempts - expected "${expectedStatus}" - forcing full refresh`);
+                        showToast('warning', `Server ${action} may have completed - refreshing...`);
+                        // Force a full page reload of server data to recalculate status
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        // Disable action flag and reload
+                        isActionInProgress = false;
+                        await loadServerData();
+                    }
+                } else {
+                    showToast('error', result.error || 'Action failed');
+                    
+                    // Restore button state on error
+                    if (targetBtn) {
+                        targetBtn.innerHTML = originalHTML;
+                        targetBtn.disabled = false;
+                    }
+                    if (startBtn) startBtn.disabled = false;
+                    if (stopBtn) stopBtn.disabled = false;
+                    if (restartBtn) restartBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Error executing action:', error);
+                showToast('error', 'Failed to execute action');
+                
+                // Restore button state on error
+                if (targetBtn) {
+                    targetBtn.innerHTML = originalHTML;
+                    targetBtn.disabled = false;
+                }
+                if (startBtn) startBtn.disabled = false;
+                if (stopBtn) stopBtn.disabled = false;
+                if (restartBtn) restartBtn.disabled = false;
+            } finally {
+                // Mark action as complete - allow periodic updates to resume
+                isActionInProgress = false;
+            }
+        }
+
+        // Console functionality
+        let consoleStream = null;
+        let isConsoleStreaming = false;
+
+        function sendConsoleCommand() {
+            const input = document.getElementById('consoleInput');
+            const command = input.value.trim();
+            
+            if (!command) return;
+            
+            // Check if server is running
+            if (serverData?.service?.status !== 'running') {
+                const output = document.getElementById('consoleOutput');
+                output.innerHTML += `<div class="console-output-line" style="color: #ff6b6b;">[ERROR] Cannot send commands while server is offline</div>`;
+                output.scrollTop = output.scrollHeight;
+                input.value = '';
+                return;
+            }
+
+            // Add command to output
+            const output = document.getElementById('consoleOutput');
+            output.innerHTML += `<div class="console-output-line" style="color: #00d4aa;">> ${command}</div>`;
+            
+            // Send command to server
+            fetch(`/api/service/command`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({guid, host, service, command})
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    if (result.output) {
+                        output.innerHTML += `<div class="console-output-line">${result.output}</div>`;
+                    }
+                } else {
+                    output.innerHTML += `<div class="console-output-line" style="color: #ff6b6b;">Error: ${result.error}</div>`;
+                }
+                output.scrollTop = output.scrollHeight;
+            })
+            .catch(err => {
+                output.innerHTML += `<div class="console-output-line" style="color: #ff6b6b;">Error: ${err.message}</div>`;
+                output.scrollTop = output.scrollHeight;
+            });
+
+            input.value = '';
+        }
+
+        function clearConsole() {
+            const output = document.getElementById('consoleOutput');
+            output.innerHTML = '';
+        }
+
+        function updateConsoleState(status) {
+            const input = document.getElementById('consoleInput');
+            const sendBtn = document.querySelector('.console-send-btn');
+            const statusEl = document.getElementById('consoleStreamStatus');
+            
+            if (status !== 'running') {
+                // Server is stopped - disable console input and stop streaming
+                input.disabled = true;
+                input.placeholder = 'Server offline - console disabled';
+                sendBtn.disabled = true;
+                
+                // Stop the console stream if it's running
+                if (isConsoleStreaming) {
+                    stopConsoleStream();
+                }
+                
+                // Update status indicator to offline
+                statusEl.innerHTML = '<i class="fas fa-circle" style="color: #888;"></i> Offline';
+                statusEl.style.color = '#888';
+            } else {
+                // Server is running - enable console input
+                input.disabled = false;
+                input.placeholder = 'Enter command...';
+                sendBtn.disabled = false;
+                
+                // Auto-start streaming if not already streaming and we're on console tab
+                const consoleTab = document.getElementById('console');
+                if (consoleTab.classList.contains('active') && !isConsoleStreaming) {
+                    startConsoleStream();
+                }
+            }
+        }
+
+        function startConsoleStream() {
+            if (isConsoleStreaming) return; // Already streaming
+
+            const statusEl = document.getElementById('consoleStreamStatus');
+            const output = document.getElementById('consoleOutput');
+
+            // Update UI
+            statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
+            statusEl.style.color = '#ffd93d';
+
+            // Clear existing output
+            output.innerHTML = '<div class="console-output-line" style="color: #00d4aa;">[INFO] Connecting to live console...</div>';
+
+            // Start streaming
+            consoleStream = stream(
+                `/api/service/console/${guid}/${host}/${service}`,
+                'GET',
+                {},
+                null,
+                (event, data) => {
+                    if (event === 'stdout' || event === 'stderr') {
+                        const lines = data.split('\n');
+                        for (const line of lines) {
+                            if (line.trim()) {
+                                const color = event === 'stderr' ? '#ff6b6b' : '';
+                                output.innerHTML += `<div class="console-output-line" style="${color ? 'color: ' + color : ''}">${line}</div>`;
+                            }
+                        }
+                        output.scrollTop = output.scrollHeight;
+                    } else if (event === 'error') {
+                        output.innerHTML += `<div class="console-output-line" style="color: #ff6b6b;">[ERROR] ${data}</div>`;
+                        output.scrollTop = output.scrollHeight;
+                    }
+                },
+                false
+            );
+
+            // Mark as streaming
+            isConsoleStreaming = true;
+            statusEl.innerHTML = '<i class="fas fa-circle" style="color: #00d4aa;"></i> Live';
+            statusEl.style.color = '#00d4aa';
+
+            // Handle stream end
+            consoleStream.then(() => {
+                output.innerHTML += '<div class="console-output-line" style="color: #ffd93d;">[INFO] Console stream ended</div>';
+                output.scrollTop = output.scrollHeight;
+                stopConsoleStream();
+            }).catch((err) => {
+                output.innerHTML += `<div class="console-output-line" style="color: #ff6b6b;">[ERROR] Stream error: ${err.message || 'Unknown error'}</div>`;
+                output.scrollTop = output.scrollHeight;
+                stopConsoleStream();
+            });
+        }
+
+        function stopConsoleStream() {
+            const statusEl = document.getElementById('consoleStreamStatus');
+
+            if (consoleStream) {
+                try {
+                    if (typeof consoleStream.cancel === 'function') {
+                        const cancelResult = consoleStream.cancel();
+                        // Only call .catch() if cancel returns a promise
+                        if (cancelResult && typeof cancelResult.catch === 'function') {
+                            cancelResult.catch(err => {
+                                // Ignore abort errors, stream is already closing
+                                if (err && err.name !== 'AbortError') {
+                                    console.error('Error cancelling stream:', err);
+                                }
+                            });
+                        }
+                    }
+                } catch (err) {
+                    // Ignore any errors during cleanup
+                    if (err && err.name !== 'AbortError') {
+                        console.error('Error during stream cleanup:', err);
+                    }
+                }
+            }
+
+            consoleStream = null;
+            isConsoleStreaming = false;
+
+            // Update UI
+            statusEl.innerHTML = '<i class="fas fa-circle" style="color: #888;"></i> Disconnected';
+            statusEl.style.color = '#888';
+        }
+
+        document.getElementById('consoleInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') sendConsoleCommand();
+        });
+
+        // Quick actions
+        function handleQuickAction(action) {
+            switch(action) {
+                case 'backup':
+                    window.location.href = `/application/backups/${guid}/${host}`;
+                    break;
+                case 'update':
+                    window.location.href = `/application/configure/${guid}/${host}`;
+                    break;
+                case 'logs':
+                    window.location.href = `/service/logs/${guid}/${host}/${service}`;
+                    break;
+            }
+        }
+
+        // Load metrics for charts
+        let currentMetricsTimeframe = 'hour';
+        
+        async function loadMetricsWithTimeframe(timeframe) {
+            currentMetricsTimeframe = timeframe;
+            
+            // Update active button using data attribute instead of event.target
+            document.querySelectorAll('.timeframe-btn').forEach(btn => {
+                if (btn.getAttribute('data-timeframe') === timeframe) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            await loadMetrics();
+        }
+        
+        async function loadMetrics() {
+            try {
+                const response = await fetch(`/api/metrics/${host}/${service}?timeframe=${currentMetricsTimeframe}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    renderCharts(result.data);
+                }
+            } catch (error) {
+                console.error('Error loading metrics:', error);
+            }
+        }
+
+        function renderCharts(metrics) {
+            // Destroy existing charts and clear references
+            Object.keys(charts).forEach(key => {
+                try {
+                    if (charts[key]) {
+                        charts[key].destroy();
+                    }
+                } catch (err) {
+                    console.warn(`Error destroying chart ${key}:`, err);
+                }
+            });
+            charts = {}; // Clear the charts object
+
+            // Sort metrics by timestamp
+            const sortedMetrics = [...metrics].sort((a, b) => a.timestamp - b.timestamp);
+
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { type: 'linear', min: 0 },
+                    y: { beginAtZero: true }
+                }
+            };
+
+            // Group metrics - use index for x-axis instead of timestamp to avoid date adapter
+            const cpuData = sortedMetrics.map((m, i) => ({x: i, y: parseFloat(m.cpu_usage) || 0}));
+            const memoryData = sortedMetrics.map((m, i) => ({x: i, y: parseFloat(m.memory_usage) || 0}));
+            const playersData = sortedMetrics.map((m, i) => ({x: i, y: parseInt(m.player_count) || 0}));
+            const statusData = sortedMetrics.map((m, i) => ({x: i, y: m.status === 1 ? 1 : 0}));
+            const responseTimeData = sortedMetrics.map((m, i) => ({x: i, y: parseFloat(m.response_time) || 0}));
+
+            try {
+                charts.cpu = new Chart(document.getElementById('cpuChart'), {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            data: cpuData,
+                            borderColor: '#0096ff',
+                            backgroundColor: 'rgba(0, 150, 255, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: {
+                        ...commonOptions,
+                        scales: {
+                            ...commonOptions.scales,
+                            y: { beginAtZero: true, max: 100 }
+                        }
+                    }
+                });
+
+                charts.memory = new Chart(document.getElementById('memoryChart'), {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            data: memoryData,
+                            borderColor: '#00d4aa',
+                            backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 0,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: commonOptions
+                });
+
+                charts.players = new Chart(document.getElementById('playersChart'), {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            data: playersData,
+                            borderColor: '#ff6b6b',
+                            backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                            fill: true,
+                            stepped: true,
+                            pointRadius: 0,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: commonOptions
+                });
+
+                charts.status = new Chart(document.getElementById('statusChart'), {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            data: statusData,
+                            borderColor: '#ffd93d',
+                            backgroundColor: 'rgba(255, 217, 61, 0.1)',
+                            fill: true,
+                            stepped: true,
+                            pointRadius: 0,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: {
+                        ...commonOptions,
+                        scales: {
+                            ...commonOptions.scales,
+                            y: {
+                                min: 0,
+                                max: 1,
+                                ticks: {
+                                    callback: value => value === 1 ? 'Running' : 'Stopped'
+                                }
+                            }
+                        }
+                    }
+                });
+
+                if (document.getElementById('responseTimeChart')) {
+                    charts.responseTime = new Chart(document.getElementById('responseTimeChart'), {
+                        type: 'line',
+                        data: {
+                            datasets: [{
+                                data: responseTimeData,
+                                borderColor: '#b366ff',
+                                backgroundColor: 'rgba(179, 102, 255, 0.1)',
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 0,
+                                pointHoverRadius: 5
+                            }]
+                        },
+                        options: commonOptions
+                    });
+                }
+            } catch (err) {
+                console.error('Error creating charts:', err);
+            }
+        }
+
+        // File browser
+        function resolveTargetPath(path) {
+            const basePath = serverData?.host?.path || '';
+
+            if (!path || path === '/') {
+                return basePath;
+            }
+
+            if (path.startsWith(basePath)) {
+                return path;
+            }
+
+            const trimmed = path.startsWith('/') ? path.slice(1) : path;
+            return `${basePath}/${trimmed}`.replace(/\/+/g, '/');
+        }
+
+        function toRelativePath(path) {
+            const basePath = serverData?.host?.path || '';
+
+            if (!path || !basePath || !path.startsWith(basePath)) {
+                return path || '/';
+            }
+
+            const relative = path.slice(basePath.length) || '/';
+            return relative.startsWith('/') ? relative : `/${relative}`;
+        }
+
+        function formatLocalFileSize(bytes) {
+            if (typeof formatFileSize === 'function') {
+                return formatFileSize(bytes);
+            }
+
+            if (!bytes && bytes !== 0) {
+                return '-';
+            }
+
+            const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+            let size = bytes,
+                unitIndex = 0;
+
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex++;
+            }
+
+            return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+        }
+
+        async function loadFiles(path) {
+            if (!serverData?.host?.path) {
+                showToast('error', 'Server data not loaded yet');
+                return;
+            }
+
+            const targetPath = resolveTargetPath(path);
+            currentPath = toRelativePath(targetPath);
+            document.getElementById('currentPath').value = targetPath;
+
+            try {
+                const response = await fetch(`/api/files/${host}?path=${encodeURIComponent(targetPath)}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    renderFileList(result.files);
+                }
+            } catch (error) {
+                console.error('Error loading files:', error);
+                showToast('error', 'Failed to load files');
+            }
+        }
+
+        function renderFileList(files) {
+            const fileList = document.getElementById('fileList');
+            
+            if (!files || files.length === 0) {
+                fileList.innerHTML = '<div class="file-item"><i class="fas fa-folder-open"></i> <span>Empty directory</span></div>';
+                return;
+            }
+
+            const rows = files.sort((a, b) => {
+                const aDir = a.mimetype === 'inode/directory',
+                    bDir = b.mimetype === 'inode/directory';
+
+                if (aDir && !bDir) return -1;
+                if (!aDir && bDir) return 1;
+                return a.name.localeCompare(b.name);
+            }).map(file => {
+                const isDirectory = file.mimetype === 'inode/directory',
+                    icon = isDirectory ? 'fa-folder' : 'fa-file',
+                    meta = isDirectory ? 'Directory' : formatLocalFileSize(file.size),
+                    modified = file.modified ? convertTimestampToDateTimeString(file.modified) : '';
+
+                return `
+                    <div class="file-item" data-path="${file.path}" data-type="${isDirectory ? 'directory' : 'file'}">
+                        <i class="fas ${icon}"></i>
+                        <span style="flex:1;">${file.name}</span>
+                        <span style="opacity:0.7; min-width:140px;">${meta}</span>
+                        <span style="opacity:0.7; min-width:180px;">${modified}</span>
+                    </div>
+                `;
+            }).join('');
+
+            fileList.innerHTML = rows;
+
+            fileList.querySelectorAll('.file-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const file = files.find(f => f.path === item.dataset.path);
+                    if (!file) return;
+
+                    if (item.dataset.type === 'directory') {
+                        loadFiles(file.path);
+                        return;
+                    }
+
+                    handleFileOpen(file);
+                });
+
+                // Add context menu support
+                item.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    const file = files.find(f => f.path === item.dataset.path);
+                    if (!file) return;
+                    showFileContextMenu(e, file, item.dataset.type === 'directory');
+                });
+            });
+
+            // Add context menu to empty space
+            fileList.addEventListener('contextmenu', (e) => {
+                if (e.target === fileList || e.target.closest('.file-item') === null) {
+                    e.preventDefault();
+                    showFileContextMenu(e, null, false);
+                }
+            });
+        }
+
+        function navigateUp() {
+            if (currentPath === '/' || currentPath === '') return;
+            const parts = currentPath.split('/').filter(p => p);
+            parts.pop();
+            loadFiles('/' + parts.join('/'));
+        }
+
+        function refreshFiles() {
+            loadFiles(currentPath);
+        }
+
+        function startFileOperationRefresh() {
+            if (isFileOperationInProgress) return; // Already running
+            
+            isFileOperationInProgress = true;
+            fileRefreshInterval = setInterval(() => {
+                refreshFiles();
+            }, 1000); // Refresh every second
+        }
+
+        function stopFileOperationRefresh() {
+            isFileOperationInProgress = false;
+            if (fileRefreshInterval) {
+                clearInterval(fileRefreshInterval);
+                fileRefreshInterval = null;
+            }
+        }
+
+        function downloadFile(path) {
+            window.open(`/api/file/${host}?path=${encodeURIComponent(path)}&download=1`, '_blank');
+        }
+
+        function isCompressedFile(mimetype, filename) {
+            const compressedMimetypes = [
+                'application/zip',
+                'application/gzip',
+                'application/x-gzip',
+                'application/x-tar',
+                'application/x-7z-compressed',
+                'application/x-rar-compressed',
+                'application/x-bzip2'
+            ];
+
+            const compressedExtensions = ['.zip', '.tar', '.tar.gz', '.tgz', '.tar.bz2', '.7z', '.rar', '.gz', '.bz2'];
+
+            if (compressedMimetypes.includes(mimetype)) return true;
+
+            const ext = filename.toLowerCase();
+            return compressedExtensions.some(e => ext.endsWith(e));
+        }
+
+        function handleFileOpen(file) {
+            fetch(`/api/file/${host}?path=${encodeURIComponent(file.path)}`)
+                .then(r => r.json())
+                .then(result => {
+                    if (!result.success) {
+                        showToast('error', result.error || 'Unable to open file');
+                        return;
+                    }
+
+                    if (result.mimetype === 'inode/directory') {
+                        loadFiles(file.path);
+                        return;
+                    }
+
+                    if (isCompressedFile(result.mimetype, file.name)) {
+                        openCompressedFileModal(result);
+                        return;
+                    }
+
+                    if (result.encoding === 'raw') {
+                        openFileModal(result);
+                        return;
+                    }
+
+                    downloadFile(file.path);
+                })
+                .catch(() => {
+                    showToast('error', 'Failed to open file');
+                });
+        }
+
+        let fileEditor = null;
+
+        function getLanguageFromFilename(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const modeMap = {
+                'js': 'javascript',
+                'py': 'python',
+                'sh': 'shell',
+                'bash': 'shell',
+                'html': 'htmlmixed',
+                'css': 'css',
+                'xml': 'xml',
+                'json': 'javascript',
+                'yml': 'yaml',
+                'yaml': 'yaml'
+            };
+            return modeMap[ext] || 'null';
+        }
+
+        function openFileModal(fileData) {
+            const modal = document.getElementById('fileEditorModal'),
+                title = document.getElementById('fileEditorTitle'),
+                status = document.getElementById('fileEditorStatus'),
+                saveBtn = document.getElementById('fileEditorSaveBtn'),
+                downloadBtn = document.getElementById('fileEditorDownloadBtn');
+
+            currentFilePath = fileData.path;
+            title.innerHTML = `<i class="fas fa-edit"></i> ${fileData.name}`;
+            status.style.display = 'none';
+            status.textContent = '';
+            saveBtn.disabled = false;
+            downloadBtn.style.display = 'none';
+
+            modal.classList.add('show');
+
+            // Initialize editor on first open (lazy initialization)
+            if (!fileEditor) {
+                setTimeout(() => {
+                    fileEditor = CodeMirror(document.getElementById('fileEditorContainer'), {
+                        lineNumbers: true,
+                        mode: 'null',
+                        theme: 'material-darker',
+                        indentUnit: 4,
+                        tabSize: 4,
+                        indentWithTabs: false,
+                        lineWrapping: true,
+                        styleActiveLine: true,
+                        matchBrackets: true,
+                        autoCloseBrackets: true,
+                        showCursorWhenSelecting: true,
+                        viewportMargin: 10
+                    });
+
+                    // Set content after initialization
+                    const syntaxMode = getLanguageFromFilename(fileData.name);
+                    fileEditor.setOption('mode', syntaxMode);
+                    fileEditor.setValue(fileData.content || '');
+                    fileEditor.clearHistory();
+                }, 100);
+            } else {
+                // Update existing editor
+                setTimeout(() => {
+                    const syntaxMode = getLanguageFromFilename(fileData.name);
+                    fileEditor.setOption('mode', syntaxMode);
+                    fileEditor.setValue(fileData.content || '');
+                    fileEditor.clearHistory();
+                    fileEditor.refresh();
+                }, 50);
+            }
+        }
+
+        function closeFileModal() {
+            const modal = document.getElementById('fileEditorModal');
+            modal.classList.remove('show');
+            currentFilePath = null;
+        }
+
+        function downloadCurrentFile() {
+            if (!currentFilePath) return;
+            downloadFile(currentFilePath);
+        }
+
+        let currentCompressedFile = null;
+
+        function openCompressedFileModal(fileData) {
+            const modal = document.getElementById('compressedFileModal'),
+                title = document.getElementById('compressedFileTitle');
+
+            currentCompressedFile = fileData;
+            title.innerHTML = `<i class="fas fa-file-archive"></i> ${fileData.name}`;
+            
+            const status = document.getElementById('compressedFileStatus');
+            status.style.display = 'none';
+            status.textContent = '';
+
+            modal.classList.add('show');
+        }
+
+        function closeCompressedFileModal() {
+            const modal = document.getElementById('compressedFileModal');
+            modal.classList.remove('show');
+            currentCompressedFile = null;
+        }
+
+        // File Action Modal
+        let fileActionCallback = null;
+
+        function showFileActionModal(title, label, defaultValue, hint, callback) {
+            const modal = document.getElementById('fileActionModal');
+            const input = document.getElementById('fileActionInput');
+            
+            document.getElementById('fileActionTitle').innerHTML = `<i class="fas fa-file"></i> ${title}`;
+            document.getElementById('fileActionLabel').textContent = label;
+            input.value = defaultValue || '';
+            input.placeholder = hint || '';
+            
+            const hintEl = document.getElementById('fileActionHint');
+            if (hint) {
+                hintEl.textContent = hint;
+                hintEl.style.display = 'block';
+            } else {
+                hintEl.style.display = 'none';
+            }
+            
+            // Store callback before showing modal
+            fileActionCallback = callback;
+            modal.classList.add('show');
+            input.focus();
+            input.select();
+        }
+
+        function closeFileActionModal() {
+            const modal = document.getElementById('fileActionModal');
+            modal.classList.remove('show');
+            fileActionCallback = null;
+        }
+
+        function confirmFileAction() {
+            const input = document.getElementById('fileActionInput');
+            const value = input.value.trim();
+            
+            if (!value) {
+                showToast('error', 'Please enter a value');
+                return;
+            }
+            
+            // Execute callback before closing
+            if (fileActionCallback) {
+                fileActionCallback(value);
+            }
+            
+            closeFileActionModal();
+        }
+
+        // Confirmation Modal
+        let confirmationCallback = null;
+
+        function showConfirmationModal(title, message, callback) {
+            const modal = document.getElementById('confirmationModal');
+            document.getElementById('confirmationTitle').innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${title}`;
+            document.getElementById('confirmationMessage').textContent = message;
+            confirmationCallback = callback;
+            modal.classList.add('show');
+        }
+
+        function closeConfirmationModal() {
+            const modal = document.getElementById('confirmationModal');
+            modal.classList.remove('show');
+            confirmationCallback = null;
+        }
+
+        function executeConfirmation() {
+            if (confirmationCallback) {
+                confirmationCallback();
+            }
+            closeConfirmationModal();
+        }
+
+        // Allow Enter key to confirm
+        document.getElementById('fileActionInput')?.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                confirmFileAction();
+            }
+        });
+
+        function downloadCompressedFile() {
+            if (!currentCompressedFile) return;
+            downloadFile(currentCompressedFile.path);
+            closeCompressedFileModal();
+        }
+
+        async function extractCompressedFile() {
+            if (!currentCompressedFile) return;
+
+            startFileOperationRefresh();
+
+            const extractBtn = document.getElementById('compressedFileExtractBtn'),
+                status = document.getElementById('compressedFileStatus'),
+                downloadBtn = document.getElementById('compressedFileDownloadBtn');
+
+            extractBtn.disabled = true;
+            downloadBtn.disabled = true;
+            status.style.display = 'block';
+            status.innerHTML = '<div style="color: #0096ff;"><i class="fas fa-spinner fa-spin"></i> Extracting...</div>';
+
+            try {
+                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(currentCompressedFile.path)}&extract=1`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    status.innerHTML = '<div style="color: #059669;"><i class="fas fa-check"></i> File extracted successfully!</div>';
+                    setTimeout(() => {
+                        closeCompressedFileModal();
+                        refreshFiles();
+                    }, 2000);
+                } else {
+                    status.innerHTML = `<div style="color: #dc2626;"><i class="fas fa-exclamation-triangle"></i> ${result.error || 'Extraction failed'}</div>`;
+                    extractBtn.disabled = false;
+                    downloadBtn.disabled = false;
+                    stopFileOperationRefresh();
+                }
+            } catch (error) {
+                status.innerHTML = `<div style="color: #dc2626;"><i class="fas fa-exclamation-triangle"></i> ${error.message}</div>`;
+                extractBtn.disabled = false;
+                downloadBtn.disabled = false;
+                stopFileOperationRefresh();
+            }
+        }
+
+        // Context Menu for Files
+        let contextMenuFile = null;
+        let contextMenuIsDirectory = false;
+        let copiedFilePath = null;
+
+        function isArchiveFile(filename) {
+            const archiveExtensions = ['.tar', '.tar.gz', '.tgz', '.tar.bz2', '.zip', '.rar', '.7z', '.gz', '.bz2', '.xz'];
+            return archiveExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+        }
+
+        function showFileContextMenu(e, file, isDirectory) {
+            const menu = document.getElementById('fileContextMenu');
+            
+            // Store context
+            contextMenuFile = file;
+            contextMenuIsDirectory = isDirectory;
+
+            // Show/hide menu items based on context
+            document.getElementById('contextEdit').style.display = (file && !isDirectory) ? 'flex' : 'none';
+            document.getElementById('contextDownload').style.display = file ? 'flex' : 'none';
+            document.getElementById('contextCopy').style.display = file ? 'flex' : 'none';
+            document.getElementById('contextRename').style.display = file ? 'flex' : 'none';
+            document.getElementById('contextZip').style.display = (file && isDirectory) ? 'flex' : 'none';
+            document.getElementById('contextExtract').style.display = (file && !isDirectory && isArchiveFile(file.name)) ? 'flex' : 'none';
+            document.getElementById('contextDelete').style.display = file ? 'flex' : 'none';
+            document.getElementById('contextUpload').style.display = !file ? 'flex' : 'none';
+
+            // Position menu with boundary detection
+            menu.style.display = 'block';
+            
+            let x = e.pageX;
+            let y = e.pageY;
+            
+            // Get menu dimensions
+            const menuRect = menu.getBoundingClientRect();
+            const menuWidth = menuRect.width || 200; // Fallback width
+            const menuHeight = menuRect.height || 300; // Fallback height
+            
+            // Get viewport dimensions
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Adjust horizontal position if menu would go off-screen
+            if (x + menuWidth > viewportWidth) {
+                x = Math.max(0, viewportWidth - menuWidth - 10);
+            }
+            
+            // Adjust vertical position if menu would go off-screen
+            if (y + menuHeight > viewportHeight) {
+                y = Math.max(0, viewportHeight - menuHeight - 10);
+            }
+            
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+        }
+
+        function hideFileContextMenu() {
+            document.getElementById('fileContextMenu').style.display = 'none';
+            contextMenuFile = null;
+            contextMenuIsDirectory = false;
+        }
+
+        // Context menu actions
+        document.getElementById('contextEdit')?.addEventListener('click', () => {
+            if (contextMenuFile) {
+                handleFileOpen(contextMenuFile);
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextDownload')?.addEventListener('click', () => {
+            if (contextMenuFile) {
+                downloadFile(contextMenuFile.path);
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextCopy')?.addEventListener('click', () => {
+            if (contextMenuFile) {
+                duplicateFileOrFolder(contextMenuFile.path, contextMenuFile.name);
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextMove')?.addEventListener('click', () => {
+            if (contextMenuFile) {
+                const file = { ...contextMenuFile }; // Capture file data
+                const basePath = serverData?.host?.path || '';
+                showFileActionModal(
+                    'Move File/Folder',
+                    `Move "${file.name}" to:`,
+                    basePath || '',
+                    'Examples: /home/user/folder (full) or /folder (relative)',
+                    (destination) => moveFileOrFolder(file.path, destination, basePath)
+                );
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextRename')?.addEventListener('click', () => {
+            if (contextMenuFile) {
+                const file = { ...contextMenuFile }; // Capture file data
+                showFileActionModal(
+                    'Rename',
+                    `Rename "${file.name}" to:`,
+                    file.name,
+                    '',
+                    (newName) => {
+                        if (newName !== file.name) {
+                            renameFileOrFolder(file.path, newName);
+                        }
+                    }
+                );
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextZip')?.addEventListener('click', () => {
+            if (contextMenuFile && contextMenuIsDirectory) {
+                zipFolder(contextMenuFile.path);
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextExtract')?.addEventListener('click', () => {
+            if (contextMenuFile && !contextMenuIsDirectory && isArchiveFile(contextMenuFile.name)) {
+                extractFile(contextMenuFile.path);
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextDelete')?.addEventListener('click', () => {
+            if (contextMenuFile) {
+                const file = { ...contextMenuFile }; // Capture file data
+                showConfirmationModal(
+                    'Delete',
+                    `Are you sure you want to delete "${file.name}"?`,
+                    () => deleteFileOrFolder(file.path)
+                );
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextUpload')?.addEventListener('click', () => {
+            // Trigger file upload
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.multiple = true;
+            input.onchange = (e) => uploadFiles(e.target.files);
+            input.click();
+            hideFileContextMenu();
+        });
+
+        // Hide context menu on click outside
+        document.addEventListener('click', hideFileContextMenu);
+
+        async function renameFileOrFolder(oldPath, newName) {
+            startFileOperationRefresh();
+            try {
+                const response = await fetch(`/api/file/${host}/rename?oldPath=${encodeURIComponent(oldPath)}&newName=${encodeURIComponent(newName)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Renamed successfully');
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Rename failed');
+                }
+            } catch (error) {
+                showToast('error', error.message);
+            } finally {
+                stopFileOperationRefresh();
+            }
+        }
+
+        async function zipFolder(folderPath) {
+            startFileOperationRefresh();
+            try {
+                showToast('info', 'Creating zip archive...');
+                const response = await fetch(`/api/file/${host}/zip?path=${encodeURIComponent(folderPath)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Zip archive created successfully');
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Zip creation failed');
+                }
+            } catch (error) {
+                showToast('error', error.message);
+            } finally {
+                stopFileOperationRefresh();
+            }
+        }
+
+        async function extractFile(filePath) {
+            startFileOperationRefresh();
+            try {
+                showToast('info', 'Extracting archive...');
+                const response = await fetch(`/api/file/${host}/extract?path=${encodeURIComponent(filePath)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Archive extracted successfully');
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Extraction failed');
+                }
+            } catch (error) {
+                showToast('error', error.message);
+            } finally {
+                stopFileOperationRefresh();
+            }
+        }
+
+        async function duplicateFileOrFolder(path, name) {
+            startFileOperationRefresh();
+            try {
+                showToast('info', `Duplicating ${name}...`);
+                const response = await fetch(`/api/file/${host}/duplicate?path=${encodeURIComponent(path)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', `Duplicated: ${name}`);
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Duplication failed');
+                }
+            } catch (error) {
+                showToast('error', error.message);
+            } finally {
+                stopFileOperationRefresh();
+            }
+        }
+
+        async function moveFileOrFolder(oldPath, destinationInput, basePath) {
+            startFileOperationRefresh();
+            try {
+                showToast('info', 'Moving file/folder...');
+                const response = await fetch(`/api/file/${host}/move?oldPath=${encodeURIComponent(oldPath)}&destination=${encodeURIComponent(destinationInput)}&basePath=${encodeURIComponent(basePath || '')}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Moved successfully');
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Move failed');
+                }
+            } catch (error) {
+                showToast('error', error.message);
+            } finally {
+                stopFileOperationRefresh();
+            }
+        }
+
+        async function deleteFileOrFolder(path) {
+            startFileOperationRefresh();
+            try {
+                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(path)}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Deleted successfully');
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Delete failed');
+                }
+            } catch (error) {
+                showToast('error', error.message);
+            } finally {
+                stopFileOperationRefresh();
+            }
+        }
+
+        async function uploadFiles(files) {
+            if (!files || files.length === 0) return;
+
+            startFileOperationRefresh();
+            showToast('info', `Uploading ${files.length} file(s)...`);
+            
+            let successCount = 0;
+            let failCount = 0;
+            // Get the absolute path from the displayed input field
+            const absolutePath = document.getElementById('currentPath').value;
+
+            try {
+                for (const file of files) {
+                    try {
+                        const targetPath = absolutePath.endsWith('/') ? absolutePath + file.name : absolutePath + '/' + file.name;
+                        
+                        const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(targetPath)}`, {
+                            method: 'PUT',
+                            body: file
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            successCount++;
+                        } else {
+                            failCount++;
+                            console.error('Upload failed for', file.name, result.error);
+                        }
+                    } catch (error) {
+                        failCount++;
+                        console.error('Upload error for', file.name, error);
+                    }
+                }
+
+                if (successCount > 0) {
+                    showToast('success', `Uploaded ${successCount} file(s) successfully`);
+                    refreshFiles();
+                }
+                if (failCount > 0) {
+                    showToast('error', `Failed to upload ${failCount} file(s)`);
+                }
+            } finally {
+                stopFileOperationRefresh();
+            }
+        }
+
+        async function saveFileEdits() {
+            if (!currentFilePath) return;
+
+            startFileOperationRefresh();
+
+            const status = document.getElementById('fileEditorStatus'),
+                saveBtn = document.getElementById('fileEditorSaveBtn'),
+                downloadBtn = document.getElementById('fileEditorDownloadBtn');
+
+            saveBtn.disabled = true;
+            status.style.display = 'block';
+            status.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(currentFilePath)}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: fileEditor.getValue()
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    status.textContent = 'File saved successfully';
+                    saveBtn.disabled = false;
+                    stopFileOperationRefresh();
+                    return;
+                }
+
+                status.textContent = result.error || 'Save failed';
+                downloadBtn.style.display = 'inline-flex';
+                stopFileOperationRefresh();
+            } catch (error) {
+                status.textContent = `Save failed: ${error.message}`;
+                downloadBtn.style.display = 'inline-flex';
+                stopFileOperationRefresh();
+            }
+
+            saveBtn.disabled = false;
+        }
+
+        // Settings
+        let applicationOptions = [];
+
+        async function loadSettings() {
+            // Load server configuration options
+            document.getElementById('serverSettings').innerHTML = '';
+            const serverSettingsDiv = document.getElementById('serverSettings');
+
+            // Automated Updates Section
+            const updatesSection = document.createElement('div');
+            updatesSection.innerHTML = `
+                <h5 style="margin-bottom: 1rem;"><i class="fas fa-circle-up"></i> Automated Updates</h5>
+                <div id="automatedUpdatesDisabledMessage" style="display:none;">
+                    <div class="warning-message" style="margin-bottom: 1rem;">
+                        Automatic updates are NOT enabled!
+                    </div>
+                </div>
+                <div id="automatedUpdatesEnabledMessage" style="display:none;">
+                    <div class="success-message" style="margin-bottom: 1rem;">
+                        <p>
+                            Automatic updates are enabled - game will check for updates and <strong>if updates are present</strong> will restart to apply them automatically.
+                        </p>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="action-update" id="openUpdateBtn">
+                        <i class="fas fa-circle-up"></i>
+                        Update Now
+                    </button>
+                    <button class="action-edit" id="configureAutoUpdateBtn">
+                        <i class="fas fa-clock"></i>
+                        Configure Auto Updates
+                    </button>
+                </div>
+            `;
+            serverSettingsDiv.appendChild(updatesSection);
+
+            // Automated Restarts Section
+            const restartsSection = document.createElement('div');
+            restartsSection.innerHTML = `
+                <h5 style="margin-top: 1.5rem; margin-bottom: 1rem;"><i class="fas fa-power-off"></i> Automated Restarts</h5>
+                <div id="automatedRestartsDisabledMessage" style="display:none;">
+                    <div class="warning-message" style="margin-bottom: 1rem;">
+                        Automatic restarts are NOT enabled!
+                    </div>
+                </div>
+                <div id="automatedRestartsEnabledMessage" style="display:none;">
+                    <div class="success-message" style="margin-bottom: 1rem;">
+                        Automatic restarts are enabled - game will restart (and update if necessary) automatically on a set schedule.
+                    </div>
+                </div>
+                <button class="action-edit" id="configureAutoRestartBtn">
+                    <i class="fas fa-power-off"></i>
+                    Configure Auto Restarts
+                </button>
+            `;
+            serverSettingsDiv.appendChild(restartsSection);
+
+            // Reinstall Application Section
+            const reinstallSection = document.createElement('div');
+            reinstallSection.innerHTML = `
+                <h5 style="margin-top: 1.5rem; margin-bottom: 1rem;"><i class="fas fa-undo"></i> Reinstall Application</h5>
+                <div class="info-message" style="margin-bottom: 1rem;">
+                    <p>
+                        If you run into issues with this application or there are configuration updates available from the maintainer,
+                        you can reinstall this game without affecting your game data.
+                        <br/><br/>
+                        You will need to stop the game before performing a reinstall however.
+                    </p>
+                </div>
+                <button id="reinstallBtn" class="link-control action-create disabled">
+                    <i class="fas fa-undo"></i>
+                    Reinstall Game
+                </button>
+            `;
+            serverSettingsDiv.appendChild(reinstallSection);
+
+            // Load automatic updates and restarts configuration
+            loadAutomaticUpdates();
+            loadAutomaticRestarts();
+
+            // Enable reinstall button
+            document.getElementById('reinstallBtn').classList.remove('disabled');
+            document.getElementById('reinstallBtn').addEventListener('click', () => {
+                window.location.href = `/application/install/${guid}/${host}`;
+            });
+
+            // Setup event listeners
+            document.getElementById('openUpdateBtn').addEventListener('click', () => {
+                document.getElementById('updateModal').classList.add('show');
+            });
+
+            document.getElementById('configureAutoUpdateBtn').addEventListener('click', () => {
+                document.getElementById('autoUpdateModal').classList.add('show');
+            });
+
+            document.getElementById('saveAutoUpdateBtn').addEventListener('click', saveAutomaticUpdates);
+
+            document.getElementById('configureAutoRestartBtn').addEventListener('click', () => {
+                document.getElementById('autoRestartModal').classList.add('show');
+            });
+
+            document.getElementById('saveAutoRestartBtn').addEventListener('click', saveAutomaticRestarts);
+
+            // Handle schedule change for weekly day row visibility and delayed checkbox
+            const updateScheduleSelect = document.getElementById('autoUpdateSchedule');
+            const restartScheduleSelect = document.getElementById('autoRestartSchedule');
+            
+            if (updateScheduleSelect) {
+                updateScheduleSelect.addEventListener('change', () => {
+                    const weeklyRow = document.getElementById('autoUpdateWeeklyDayRow');
+                    if (weeklyRow) {
+                        weeklyRow.style.display = updateScheduleSelect.value === 'weekly' ? 'block' : 'none';
+                    }
+                    
+                    const delayedUpdateGroup = document.getElementById('delayedUpdate')?.closest('.form-group');
+                    if (delayedUpdateGroup) {
+                        delayedUpdateGroup.style.display = 
+                            updateScheduleSelect.value === 'disabled' ? 'none' : 'flex';
+                    }
+                });
+                // Initialize visibility
+                updateScheduleSelect.dispatchEvent(new Event('change'));
+            }
+            
+            if (restartScheduleSelect) {
+                restartScheduleSelect.addEventListener('change', () => {
+                    const weeklyRow = document.getElementById('autoRestartWeeklyDayRow');
+                    if (weeklyRow) {
+                        weeklyRow.style.display = restartScheduleSelect.value === 'weekly' ? 'block' : 'none';
+                    }
+                });
+                // Initialize visibility
+                restartScheduleSelect.dispatchEvent(new Event('change'));
+            }
+        }
+
+        async function loadAutomaticUpdates() {
+            const identifier = `${guid}_update`;
+
+            loadCronJob(host, identifier).then(job => {
+                if (job) {
+                    document.getElementById('automatedUpdatesDisabledMessage').style.display = 'none';
+                    document.getElementById('automatedUpdatesEnabledMessage').style.display = 'flex';
+                } else {
+                    document.getElementById('automatedUpdatesDisabledMessage').style.display = 'flex';
+                    document.getElementById('automatedUpdatesEnabledMessage').style.display = 'none';
+                }
+            }).catch(e => {
+                console.error('Error loading cron job:', e);
+            });
+        }
+
+        async function loadAutomaticRestarts() {
+            const identifier = `${guid}_restart`;
+
+            loadCronJob(host, identifier).then(job => {
+                if (job) {
+                    document.getElementById('automatedRestartsDisabledMessage').style.display = 'none';
+                    document.getElementById('automatedRestartsEnabledMessage').style.display = 'flex';
+                } else {
+                    document.getElementById('automatedRestartsDisabledMessage').style.display = 'flex';
+                    document.getElementById('automatedRestartsEnabledMessage').style.display = 'none';
+                }
+            }).catch(e => {
+                console.error('Error loading cron job:', e);
+            });
+        }
+
+        async function saveAutomaticUpdates() {
+            const identifier = `${guid}_update`;
+            const gameDir = serverData?.host?.path;
+            const delayedUpdate = document.getElementById('delayedUpdate');
+
+            if (!gameDir) {
+                showToast('error', 'Cannot determine game directory for this host.');
+                return;
+            }
+
+            const schedule = parseCronSchedule(document.getElementById('autoUpdateModal'));
+
+            if (schedule === 'DISABLED') {
+                fetch(`/api/cron/${host}`, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({identifier})
+                })
+                    .then(r => r.json())
+                    .then(response => {
+                        if (response.success) {
+                            showToast('success', 'Automatic updates disabled.');
+                            document.getElementById('autoUpdateModal').classList.remove('show');
+                            loadAutomaticUpdates();
+                        } else {
+                            showToast('error', `Failed to disable automatic updates: ${response.error}`);
+                        }
+                    });
+                return;
+            }
+
+            let command;
+            if (applicationOptions.includes('delayed-update') && delayedUpdate?.checked) {
+                command = `${gameDir}/manage.py --check-update && ${gameDir}/manage.py --delayed-update`;
+            } else {
+                command = `! ${gameDir}/manage.py --has-players && ${gameDir}/manage.py --check-update && ${gameDir}/manage.py --update`;
+            }
+
+            fetch(`/api/cron/${host}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({schedule, command, identifier})
+            })
+                .then(r => r.json())
+                .then(response => {
+                    if (response.success) {
+                        showToast('success', 'Automatic updates scheduled.');
+                        document.getElementById('autoUpdateModal').classList.remove('show');
+                        loadAutomaticUpdates();
+                    } else {
+                        showToast('error', `Failed to save schedule: ${response.error}`);
+                    }
+                });
+        }
+
+        async function saveAutomaticRestarts() {
+            const identifier = `${guid}_restart`;
+            const gameDir = serverData?.host?.path;
+
+            if (!gameDir) {
+                showToast('error', 'Cannot determine game directory for this host.');
+                return;
+            }
+
+            const schedule = parseCronSchedule(document.getElementById('autoRestartModal'));
+
+            if (schedule === 'DISABLED') {
+                fetch(`/api/cron/${host}`, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({identifier})
+                })
+                    .then(r => r.json())
+                    .then(response => {
+                        if (response.success) {
+                            showToast('success', 'Automatic restarts disabled.');
+                            document.getElementById('autoRestartModal').classList.remove('show');
+                            loadAutomaticRestarts();
+                        } else {
+                            showToast('error', `Failed to disable automatic restarts: ${response.error}`);
+                        }
+                    });
+                return;
+            }
+
+            let command;
+            if (applicationOptions.includes('delayed-restart')) {
+                command = `${gameDir}/manage.py --delayed-restart`;
+            } else {
+                command = `${gameDir}/manage.py --restart`;
+            }
+
+            fetch(`/api/cron/${host}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({schedule, command, identifier})
+            })
+                .then(r => r.json())
+                .then(response => {
+                    if (response.success) {
+                        showToast('success', 'Automatic restarts scheduled.');
+                        document.getElementById('autoRestartModal').classList.remove('show');
+                        loadAutomaticRestarts();
+                    } else {
+                        showToast('error', `Failed to save schedule: ${response.error}`);
+                    }
+                });
+        }
+
+        // Backups
+        let backupPath = null;
+
+        function renderBackupFile(fileData) {
+            const fileItem = document.createElement('div');
+            fileItem.classList.add('backup-file-item');
+            fileItem.innerHTML = `
+                <div class="file-name">${fileData.name}</div>
+                <div class="file-modified">${convertTimestampToDateTimeString(fileData.modified)}</div>
+                <div class="file-size">${formatFileSize(fileData.size)}</div>
+                <div class="file-actions button-group">
+                    <button class="action-rename"><i class="fas fa-pencil"></i> Rename</button>
+                    <button class="action-download"><i class="fas fa-download"></i> Download</button>
+                    <button class="action-restore"><i class="fas fa-undo"></i> Restore</button>
+                    <button class="action-remove"><i class="fas fa-trash"></i> Delete</button>
+                </div>`;
+
+            fileItem.querySelector('.action-rename').addEventListener('click', () => {
+                let filename = fileData.name;
+                let extension = '';
+                if (filename.endsWith('.tar.gz')) {
+                    filename = filename.slice(0, -7);
+                    extension = '.tar.gz';
+                } else if (filename.endsWith('.zip')) {
+                    filename = filename.slice(0, -4);
+                    extension = '.zip';
+                }
+                document.getElementById('renameNewName').value = filename;
+                document.getElementById('renameNewName').dataset.extension = extension;
+                document.getElementById('renameNewName').dataset.path = fileData.path;
+                document.getElementById('renameModal').classList.add('show');
+            });
+
+            fileItem.querySelector('.action-download').addEventListener('click', () => {
+                window.open(`/api/file/${host}?path=${fileData.path}&download=1`, '_blank');
+            });
+
+            fileItem.querySelector('.action-restore').addEventListener('click', () => {
+                document.getElementById('confirmRestoreBtn').dataset.file = fileData.name;
+                document.getElementById('restoreModal').querySelector('.warning-message').style.display = 'flex';
+                document.getElementById('restoreModal').querySelector('.terminal').style.display = 'none';
+                document.getElementById('restoreModal').classList.add('show');
+            });
+
+            fileItem.querySelector('.action-remove').addEventListener('click', () => {
+                document.getElementById('confirmDeleteBtn').dataset.path = fileData.path;
+                document.getElementById('deleteModal').classList.add('show');
+            });
+
+            return fileItem;
+        }
+
+        // Configuration Management
+        let serviceRunning = false;
+
+        /**
+         * Build the HTML for configuration options
+         */
+        async function handleConfigChange(event) {
+            const input = event.target.closest('[data-option]');
+            if (!input || serviceRunning) return;
+
+            const isService = input.dataset.service === '1';
+            const option = input.dataset.option;
+            let newValue;
+
+            if (input.classList.contains('form-values')) {
+                newValue = [];
+                input.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+                    newValue.push(checkbox.value);
+                });
+            } else if (input.type === 'checkbox') {
+                newValue = input.checked;
+            } else if (input.type === 'number') {
+                newValue = input.step && input.step.includes('.') 
+                    ? parseFloat(input.value) 
+                    : parseInt(input.value, 10);
+            } else {
+                newValue = input.value;
+            }
+
+            const endpoint = isService
+                ? `/api/service/configs/${guid}/${host}/${service}`
+                : `/api/application/configs/${guid}/${host}`;
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({[option]: newValue})
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', `Configuration option "${option}" updated successfully.`);
+                } else {
+                    showToast('error', `Failed to update option "${option}": ${result.error}`);
+                }
+            } catch (err) {
+                showToast('error', `Error updating option "${option}": ${err.message}`);
+            }
+        }
+
+        async function loadConfiguration() {
+            const configContainer = document.getElementById('configurationContainer');
+            configContainer.innerHTML = '<div style="text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading configuration options...</div>';
+
+            // Check if service is running
+            serviceRunning = serverData?.service?.status !== 'stopped';
+            
+            if (serviceRunning) {
+                document.getElementById('configureWarningMessage').style.display = 'block';
+            }
+
+            try {
+                // Load both configs in parallel
+                const [serviceConfigResult, appConfigResult] = await Promise.all([
+                    fetch(`/api/service/configs/${guid}/${host}/${service}`).then(r => r.json()),
+                    fetch(`/api/application/configs/${guid}/${host}`).then(r => r.json())
+                ]);
+
+                // Combine all options
+                const allOptions = [];
+                
+                if (serviceConfigResult.success && serviceConfigResult.configs) {
+                    allOptions.push(...serviceConfigResult.configs.map(c => ({...c, isService: true})));
+                }
+
+                if (appConfigResult.success && appConfigResult.configs) {
+                    allOptions.push(...appConfigResult.configs.map(c => ({...c, isService: false})));
+                }
+
+                // Build all HTML in one go using efficient array operations
+                const disabled = serviceRunning ? 'disabled' : '';
+                const htmlParts = new Array(allOptions.length);
+                
+                for (let i = 0; i < allOptions.length; i++) {
+                    const option = allOptions[i];
+                    const name = option.option.toLowerCase().replace(/[^a-z]/g, '-').replace(/[-]+/g, '-').replace(/-$/, '');
+                    const id = `config-${option.isService ? 'service' : 'app'}-${name}`;
+                    const svc = option.isService ? '1' : '0';
+                    const label = option.isService ? option.option : `<i class="fas fa-globe" title="Option affects all instances"></i> ${option.option}`;
+                    const help = option.help ? `<p class="help-text">${option.help}</p>` : '';
+                    
+                    let inputHtml;
+                    
+                    if (option.options?.length > 0) {
+                        if (option.type === 'list') {
+                            const checks = option.options.map(opt => {
+                                const checkId = `${id}-${String(opt).toLowerCase().replace(' ', '-')}`;
+                                const chk = Array.isArray(option.value) && option.value.includes(opt) ? 'checked' : '';
+                                return `<div class="form-check"><input type="checkbox" class="form-check-input config-input" id="${checkId}" value="${opt}" ${chk} ${disabled}><label class="form-check-label" for="${checkId}">${opt}</label></div>`;
+                            }).join('');
+                            inputHtml = `<div id="${id}" class="form-values config-input" data-service="${svc}" data-option="${option.option}">${checks}</div>`;
+                        } else {
+                            const opts = option.options.map(opt => `<option value="${opt}" ${opt === option.value ? 'selected' : ''}>${opt}</option>`).join('');
+                            inputHtml = `<select id="${id}" class="form-select config-input" data-service="${svc}" data-option="${option.option}" ${disabled}>${opts}</select>`;
+                        }
+                    } else {
+                        switch (option.type) {
+                            case 'bool':
+                                const chk = option.value === true || option.value === 'true' ? 'checked' : '';
+                                inputHtml = `<input type="checkbox" id="${id}" class="form-check-input config-input" data-service="${svc}" data-option="${option.option}" ${chk} ${disabled}>`;
+                                break;
+                            case 'int':
+                            case 'float':
+                                inputHtml = `<input type="number" id="${id}" class="form-control config-input" data-service="${svc}" data-option="${option.option}" value="${option.value}" ${disabled}>`;
+                                break;
+                            case 'text':
+                                inputHtml = `<textarea id="${id}" class="form-control config-input" data-service="${svc}" data-option="${option.option}" ${disabled}>${option.value}</textarea>`;
+                                break;
+                            default:
+                                inputHtml = `<input type="text" id="${id}" class="form-control config-input" data-service="${svc}" data-option="${option.option}" value="${option.value}" ${disabled}>`;
+                        }
+                    }
+                    
+                    htmlParts[i] = `<div class="form-group"><label class="form-label" for="${id}">${label}</label>${help}${inputHtml}</div>`;
+                }
+                
+                // Single DOM update
+                configContainer.innerHTML = htmlParts.join('');
+                
+                // Single event listener
+                configContainer.removeEventListener('change', handleConfigChange);
+                configContainer.addEventListener('change', handleConfigChange);
+
+                // Set up quick search
+                const quickSearch = document.getElementById('configureQuickSearch');
+                quickSearch.addEventListener('keyup', (e) => {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const formGroups = configContainer.querySelectorAll('.form-group');
+
+                    formGroups.forEach(group => {
+                        const label = group.querySelector('.form-label');
+                        if (label && label.innerText.toLowerCase().includes(searchTerm)) {
+                            group.style.display = '';
+                        } else {
+                            group.style.display = 'none';
+                        }
+                    });
+                });
+
+                if (configContainer.querySelectorAll('.form-group').length === 0) {
+                    configContainer.innerHTML = '<div class="info-message">No configuration options available for this service.</div>';
+                }
+            } catch (error) {
+                console.error('Error loading configuration:', error);
+                configContainer.innerHTML = '<div class="error-message">Failed to load configuration options.</div>';
+            }
+        }
+
+        async function loadBackupsList() {
+            if (!backupPath) {
+                backupPath = serverData?.host?.path + '/backups';
+            }
+            if (!backupPath) {
+                document.getElementById('backupsList').innerHTML = '<p class="error-message">Backup path is not defined.</p>';
+                return;
+            }
+
+            document.getElementById('backupsList').innerHTML = '<div><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+
+            fetch(`/api/files/${host}?path=${backupPath}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const backupsList = document.getElementById('backupsList');
+                        backupsList.innerHTML = '';
+                        data.files.sort((a, b) => b.modified - a.modified);
+
+                        data.files.forEach(fileData => {
+                            if (fileData.name.endsWith('.tar.gz')) {
+                                backupsList.appendChild(renderBackupFile(fileData));
+                            }
+                        });
+
+                        if (data.files.filter(f => f.name.endsWith('.tar.gz')).length === 0) {
+                            backupsList.innerHTML = '<p style="opacity: 0.7; text-align: center;">No backups found</p>';
+                        }
+                    } else {
+                        showToast('error', `Failed to load backups: ${data.error}`);
+                    }
+                });
+        }
+
+        async function loadAutomaticBackupConfig() {
+            const identifier = `${guid}_backup`;
+
+            loadCronJob(host, identifier).then(job => {
+                if (job) {
+                    document.getElementById('automatedBackupsDisabledMessage').style.display = 'none';
+                    document.getElementById('automatedBackupsEnabledMessage').style.display = 'flex';
+                    if (job.command) {
+                        const m = job.command.match(/--max-backups=(\d+)/);
+                        if (m) document.getElementById('autoBackupKeep').value = parseInt(m[1], 10) || 0;
+                    }
+                } else {
+                    document.getElementById('automatedBackupsDisabledMessage').style.display = 'flex';
+                    document.getElementById('automatedBackupsEnabledMessage').style.display = 'none';
+                }
+            }).catch(e => {
+                console.error('Error loading cron job:', e);
+            });
+        }
+
+        async function saveAutomaticBackupConfig() {
+            const keep = parseInt(document.getElementById('autoBackupKeep').value, 10) || 0;
+            const identifier = `${guid}_backup`;
+            const gameDir = serverData?.host?.path;
+
+            if (!gameDir) {
+                showToast('error', 'Cannot determine game directory for this host.');
+                return;
+            }
+
+            const schedule = parseCronSchedule(document.getElementById('autoBackupModal'));
+
+            if (schedule === 'DISABLED') {
+                fetch(`/api/cron/${host}`, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({identifier})
+                })
+                    .then(r => r.json())
+                    .then(response => {
+                        if (response.success) {
+                            showToast('success', 'Automatic backups disabled.');
+                            document.getElementById('autoBackupModal').classList.remove('show');
+                            loadAutomaticBackupConfig();
+                        } else {
+                            showToast('error', `Failed to disable backups: ${response.error}`);
+                        }
+                    });
+                return;
+            }
+
+            const command = `${gameDir}/manage.py --backup --max-backups=${keep}`;
+
+            fetch(`/api/cron/${host}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({schedule, command, identifier})
+            })
+                .then(r => r.json())
+                .then(response => {
+                    if (response.success) {
+                        showToast('success', 'Automatic backup scheduled.');
+                        document.getElementById('autoBackupModal').classList.remove('show');
+                        loadAutomaticBackupConfig();
+                    } else {
+                        showToast('error', `Failed to save schedule: ${response.error}`);
+                    }
+                });
+        }
+
+        async function performRename() {
+            const renameInput = document.getElementById('renameNewName');
+            let newName = renameInput.value.trim();
+            const oldName = renameInput.dataset.path;
+            const path = oldName.split('/').slice(0, -1).join('/');
+
+            if (!newName) {
+                alert('Please enter a new name');
+                return;
+            }
+
+            newName = newName.replace(/[!/\\?%*:|"<> ]/g, '-');
+            newName = path + '/' + newName + renameInput.dataset.extension;
+
+            if (newName === oldName) {
+                document.getElementById('renameModal').classList.remove('show');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/file/${host}`, {
+                    method: 'MOVE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ oldPath: oldName, newPath: newName })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showToast('success', 'Backup renamed successfully');
+                    document.getElementById('renameModal').classList.remove('show');
+                    loadBackupsList();
+                } else {
+                    showToast('error', `Error renaming backup: ${result.error}`);
+                }
+            } catch (error) {
+                showToast('error', `Network error: ${error.message}`);
+            }
+        }
+
+        async function startUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+            if (!files.length) return;
+
+            if (!backupPath) backupPath = serverData?.host?.path + '/backups';
+            showToast('info', 'Starting upload, please wait...');
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+
+                try {
+                    const response = await fetch(`/api/file/${host}?path=${backupPath}/${file.name}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/octet-stream'},
+                        body: file
+                    });
+
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        showToast('error', `Error uploading ${file.name}: ${result.error}`);
+                    } else {
+                        showToast('success', `Successfully uploaded ${file.name}`);
+                        loadBackupsList();
+                    }
+                } catch (error) {
+                    showToast('error', `Network error: ${error.message}`);
+                }
+            }
+        }
+
+        // Initialize CodeMirror editor on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            // Load application data for thumbnails
+            fetchApplications().catch(e => console.error('Failed to fetch applications:', e));
+            
+            // Don't initialize editor yet - wait until modal opens
+            loadServerData();
+            setInterval(loadServerData, 30000); // Refresh every 30 seconds
+
+            // Setup backup event listeners
+            const fileInput = document.getElementById('fileInput');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const performBackupBtn = document.getElementById('performBackupBtn');
+            const confirmBackupBtn = document.getElementById('confirmBackupBtn');
+            const confirmRestoreBtn = document.getElementById('confirmRestoreBtn');
+            const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+            const configureAutoBackupBtn = document.getElementById('configureAutoBackupBtn');
+            const saveAutoBackupBtn = document.getElementById('saveAutoBackupBtn');
+            const confirmRenameBtn = document.getElementById('confirmRename');
+
+            uploadBtn?.addEventListener('click', () => fileInput.click());
+            fileInput?.addEventListener('change', startUpload);
+
+            performBackupBtn?.addEventListener('click', () => {
+                document.getElementById('backupModal').classList.add('show');
+                document.getElementById('backupModal').querySelector('.warning-message').style.display = 'flex';
+                document.getElementById('backupModal').querySelector('.terminal').style.display = 'none';
+            });
+
+            confirmBackupBtn?.addEventListener('click', () => {
+                const terminalOutput = document.getElementById('backupModal').querySelector('.terminal');
+                document.getElementById('backupModal').querySelector('.warning-message').style.display = 'none';
+                terminalOutput.textContent = 'Performing backup... Please wait.\n';
+                terminalOutput.style.display = 'block';
+                
+                stream(
+                    `/api/application/backup/${guid}/${host}`,
+                    'POST',
+                    {'Content-Type': 'application/json'},
+                    null,
+                    (event, data) => {
+                        terminalOutputHelper(terminalOutput, event, data);
+                    })
+                    .then(() => {
+                        showToast('success', 'Backup completed successfully.');
+                        loadBackupsList();
+                    })
+                    .catch(() => {
+                        showToast('error', 'Backup encountered an error.');
+                    });
+            });
+
+            confirmRestoreBtn?.addEventListener('click', () => {
+                const terminalOutput = document.getElementById('restoreModal').querySelector('.terminal');
+                const fileName = confirmRestoreBtn.dataset.file;
+
+                document.getElementById('restoreModal').querySelector('.warning-message').style.display = 'none';
+                terminalOutput.textContent = `Restoring backup '${fileName}'... Please wait.\n`;
+                terminalOutput.style.display = 'block';
+                
+                stream(
+                    `/api/application/backup/${guid}/${host}`,
+                    'PUT',
+                    {'Content-Type': 'application/json'},
+                    JSON.stringify({filename: fileName}),
+                    (event, data) => {
+                        terminalOutputHelper(terminalOutput, event, data);
+                    })
+                    .then(() => {
+                        showToast('success', 'Restore completed successfully.');
+                        document.getElementById('restoreModal').classList.remove('show');
+                        loadServerData();
+                    })
+                    .catch(() => {
+                        showToast('error', 'Restore encountered an error.');
+                    });
+            });
+
+            confirmDeleteBtn?.addEventListener('click', () => {
+                const filePath = confirmDeleteBtn.dataset.path;
+
+                fetch(`/api/file/${host}?path=${filePath}`, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'}
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showToast('success', `Backup deleted successfully.`);
+                            document.getElementById('deleteModal').classList.remove('show');
+                            loadBackupsList();
+                        } else {
+                            showToast('error', `Failed to delete backup: ${data.error}`);
+                        }
+                    });
+            });
+
+            configureAutoBackupBtn?.addEventListener('click', () => {
+                document.getElementById('autoBackupModal').classList.add('show');
+            });
+
+            saveAutoBackupBtn?.addEventListener('click', saveAutomaticBackupConfig);
+            confirmRenameBtn?.addEventListener('click', performRename);
+
+            // Update functionality
+            const confirmUpdateBtn = document.getElementById('confirmUpdateBtn');
+            confirmUpdateBtn?.addEventListener('click', () => {
+                confirmUpdateBtn.classList.add('disabled');
+                const icon = confirmUpdateBtn.querySelector('i');
+                const classes = icon.className;
+                icon.className = 'fas fa-spinner fa-spin';
+
+                const terminalOutput = document.getElementById('updateModal').querySelector('.terminal');
+                terminalOutput.textContent = 'Performing update... Please wait.\n';
+                terminalOutput.style.display = 'block';
+                document.getElementById('updateModal').querySelector('.warning-message').style.display = 'none';
+
+                stream(
+                    `/api/application/update/${guid}/${host}`,
+                    'POST',
+                    {},
+                    '',
+                    (event, data) => {
+                        terminalOutputHelper(terminalOutput, event, data);
+                    })
+                    .then(() => {
+                        showToast('success', 'Update process completed.');
+                    })
+                    .catch(err => {
+                        showToast('error', 'Update process encountered an error. See terminal output for details.');
+                    })
+                    .finally(() => {
+                        icon.className = classes;
+                        confirmUpdateBtn.classList.remove('disabled');
+                    });
+            });
+
+            // Close modals on overlay or close button click
+            document.querySelectorAll('.modal-close').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    this.closest('.modal').classList.remove('show');
+                });
+            });
+
+            document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                overlay.addEventListener('click', function() {
+                    this.closest('.modal').classList.remove('show');
+                });
+            });
+
+            document.querySelectorAll('.action-cancel').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    this.closest('.modal')?.classList.remove('show');
+                });
+            });
+
+            // Auto-start console stream on initial load since console tab is active by default
+            startConsoleStream();
+            
+            // Poll server status periodically to update console state
+            setInterval(() => {
+                loadServerData();
+            }, 5000); // Check every 5 seconds
+
+            // Dropdown menu toggle for file operations
+            document.addEventListener('click', function(e) {
+                const dropdown = document.getElementById('createDropdown');
+                const createBtn = document.getElementById('createItemBtn');
+                if (!e.target.closest('.dropdown-container')) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        });
+
+        // File/Folder Creation Functions
+        function toggleCreateDropdown() {
+            const dropdown = document.getElementById('createDropdown');
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function openNewFileModal() {
+            document.getElementById('createDropdown').style.display = 'none';
+            document.getElementById('newFileName').value = '';
+            document.getElementById('newFileModal').classList.add('show');
+            document.getElementById('newFileName').focus();
+        }
+
+        function closeNewFileModal() {
+            document.getElementById('newFileModal').classList.remove('show');
+        }
+
+        function openNewFolderModal() {
+            document.getElementById('createDropdown').style.display = 'none';
+            document.getElementById('newFolderName').value = '';
+            document.getElementById('newFolderModal').classList.add('show');
+            document.getElementById('newFolderName').focus();
+        }
+
+        function closeNewFolderModal() {
+            document.getElementById('newFolderModal').classList.remove('show');
+        }
+
+        function createNewFile() {
+            const fileName = document.getElementById('newFileName').value.trim();
+            const currentPath = document.getElementById('currentPath').value;
+
+            if (!fileName) {
+                showToast('error', 'Please enter a file name');
+                return;
+            }
+
+            if (fileName.includes('/')) {
+                showToast('error', 'File name cannot contain path separators');
+                return;
+            }
+
+            startFileOperationRefresh();
+            fetch('/api/files/create-file', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    host: host,
+                    path: currentPath,
+                    fileName: fileName
+                })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('success', `File "${fileName}" created successfully`);
+                    closeNewFileModal();
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Failed to create file');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating file:', error);
+                showToast('error', 'Failed to create file');
+            })
+            .finally(() => {
+                stopFileOperationRefresh();
+            });
+        }
+
+        function createNewFolder() {
+            const folderName = document.getElementById('newFolderName').value.trim();
+            const currentPath = document.getElementById('currentPath').value;
+
+            if (!folderName) {
+                showToast('error', 'Please enter a folder name');
+                return;
+            }
+
+            if (folderName.includes('/')) {
+                showToast('error', 'Folder name cannot contain path separators');
+                return;
+            }
+
+            startFileOperationRefresh();
+            fetch('/api/files/create-folder', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    host: host,
+                    path: currentPath,
+                    folderName: folderName
+                })
+            })
+            .then(r => r.json())
+            .then(result => {
+                if (result.success) {
+                    showToast('success', `Folder "${folderName}" created successfully`);
+                    closeNewFolderModal();
+                    refreshFiles();
+                } else {
+                    showToast('error', result.error || 'Failed to create folder');
+                }
+            })
+            .catch(error => {
+                console.error('Error creating folder:', error);
+                showToast('error', 'Failed to create folder');
+            })
+            .finally(() => {
+                stopFileOperationRefresh();
+            });
+        }
+
+        // Allow Enter key to submit in modals
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                if (document.getElementById('newFileModal').classList.contains('show')) {
+                    createNewFile();
+                } else if (document.getElementById('newFolderModal').classList.contains('show')) {
+                    createNewFolder();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

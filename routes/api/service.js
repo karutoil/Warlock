@@ -6,8 +6,32 @@ const {getApplicationServices} = require("../../libs/get_application_services.mj
 const {logger} = require("../../libs/logger.mjs");
 const {getAllApplications} = require("../../libs/get_all_applications.mjs");
 const {getApplicationMetrics} = require("../../libs/get_application_metrics.mjs");
+const {cmdRunner} = require("../../libs/cmd_runner.mjs");
 
 const router = express.Router();
+
+/**
+ * Get the actual systemd status for a service
+ */
+async function getServiceStatus(host, serviceName) {
+	try {
+		const result = await cmdRunner(host, `systemctl is-active ${serviceName}.service`);
+		const status = result.stdout.trim().toLowerCase();
+		
+		// Map systemd status to our status format
+		// systemctl is-active returns: active, inactive, failed, activating, deactivating, reloading, etc.
+		if (status === 'active' || status === 'activating') {
+			return 'running';
+		} else if (status === 'inactive' || status === 'deactivating' || status === 'failed') {
+			return 'stopped';
+		}
+		return 'stopped'; // Default to stopped for any unknown state
+	} catch (error) {
+		console.error('Error checking service status:', error);
+		// If command fails, service is likely stopped
+		return 'stopped';
+	}
+}
 
 /**
  * Get a single service and its status from a given host and application GUID
@@ -17,6 +41,11 @@ router.get('/:guid/:host/:service', validate_session, (req, res) => {
 		.then(async dat => {
 			// Get latest metrics for the service
 			let metrics = await getLatestServiceMetrics(req.params.guid, req.params.host, req.params.service);
+			
+			// Get live status from systemd instead of cached metrics
+			const liveStatus = await getServiceStatus(req.params.host, req.params.service);
+			metrics.status = liveStatus;
+			
 			dat.service = {...dat.service, ...metrics};
 
 			return res.json({

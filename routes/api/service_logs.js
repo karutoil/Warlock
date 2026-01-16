@@ -31,6 +31,26 @@ router.get('/:guid/:host/:service', validate_session, (req, res) => {
 						res.status(400).send(`Could not retrieve service logs: ${e.error.message}`);
 					});
 			}
+			else if (mode === 'custom') {
+				// User requested custom date range
+				const startDate = req.query.start;
+				const endDate = req.query.end;
+				
+				if (!startDate || !endDate) {
+					res.status(400).send('Start and end dates are required for custom mode');
+					return;
+				}
+				
+				// journalctl expects format like "2023-01-15 14:30:00"
+				const cmd = `journalctl -qu ${dat.service.service}.service --no-pager -S "${startDate}" -U "${endDate}"`;
+				cmdRunner(dat.host.host, cmd)
+					.then(output => {
+						res.send(output.stdout);
+					})
+					.catch(e => {
+						res.status(400).send(`Could not retrieve service logs: ${e.error.message}`);
+					});
+			}
 			else {
 				res.status(400).send(`Invalid mode specified: ${mode}`);
 			}

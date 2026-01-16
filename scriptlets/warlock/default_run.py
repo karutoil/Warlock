@@ -373,6 +373,18 @@ def run_manager(game):
 		help='Get performance metrics from the game server (JSON encoded)',
 		action='store_true'
 	)
+	service_actions.add_argument(
+		'--rcon',
+		help='Send an RCON command to the game server instance (requires --service)',
+		type=str,
+		default='',
+		metavar='command'
+	)
+	service_actions.add_argument(
+		'--console-attach',
+		help='Attach to the live console output of the game server instance (requires --service)',
+		action='store_true'
+	)
 	args = parser.parse_args()
 
 	if args.debug:
@@ -516,6 +528,52 @@ def run_manager(game):
 			print('ERROR: --delayed-update can only be used when managing all service instances.', file=sys.stderr)
 			sys.exit(1)
 		menu_delayed_action_game(game, 'update')
+	elif args.rcon != '':
+		if len(services) > 1:
+			print('ERROR: --rcon can only be used with a single service instance.', file=sys.stderr)
+			sys.exit(1)
+		svc = services[0]
+		if not hasattr(svc, '_api_cmd'):
+			print('ERROR: This service does not support RCON commands.', file=sys.stderr)
+			sys.exit(1)
+		result = svc._api_cmd(args.rcon)
+		if result is not None:
+			print(result)
+			sys.exit(0)
+		else:
+			sys.exit(1)
+	elif args.console_attach:
+		if len(services) > 1:
+			print('ERROR: --console-attach can only be used with a single service instance.', file=sys.stderr)
+			sys.exit(1)
+		svc = services[0]
+		if not svc.is_running():
+			print('ERROR: Service %s is not running. Cannot attach to console.' % svc.service, file=sys.stderr)
+			sys.exit(1)
+		
+		# Use journalctl to stream the live console output
+		import subprocess
+		try:
+			# Stream the systemd journal output for this service
+			proc = subprocess.Popen(
+				['journalctl', '-u', f'{svc.service}.service', '-f', '-n', '50', '--no-pager'],
+				stdout=subprocess.PIPE,
+				stderr=subprocess.STDOUT,
+				text=True,
+				bufsize=1
+			)
+			
+			# Stream output line by line
+			for line in iter(proc.stdout.readline, ''):
+				if line:
+					print(line, end='', flush=True)
+		except KeyboardInterrupt:
+			proc.terminate()
+			proc.wait()
+			sys.exit(0)
+		except Exception as e:
+			print(f'ERROR: Failed to attach to console: {str(e)}', file=sys.stderr)
+			sys.exit(1)
 	else:
 		if len(services) > 1:
 			if not callable(getattr(sys.modules[__name__], 'menu_main', None)):

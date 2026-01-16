@@ -7,10 +7,12 @@ const cache = require("../../libs/cache.mjs");
 const router = express.Router();
 
 // Service control endpoint (start/stop/restart) - now works with all applications dynamically
-router.post('/:guid/:host/:service', validate_session, (req, res) => {
-	const guid = req.params.guid,
-		host = req.params.host,
-		service = req.params.service;
+// Supports both URL params and body params for flexibility
+router.post('/:guid?/:host?/:service?', validate_session, (req, res) => {
+	// Support both URL params and body params
+	const guid = req.params.guid || req.body.guid,
+		host = req.params.host || req.body.host,
+		service = req.params.service || req.body.service;
 	const { action } = req.body;
 
 	if (!(host && guid && service && action)) {
