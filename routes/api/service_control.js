@@ -12,8 +12,7 @@ router.post('/:guid?/:host?/:service?', validate_session, (req, res) => {
 	// Support both URL params and body params
 	const guid = req.params.guid || req.body.guid,
 		host = req.params.host || req.body.host,
-		service = req.params.service || req.body.service,
-		instanceId = req.body.instance_id || 'default';
+		service = req.params.service || req.body.service;
 	const { action } = req.body;
 
 	if (!(host && guid && service && action)) {
@@ -52,8 +51,7 @@ router.post('/:guid?/:host?/:service?', validate_session, (req, res) => {
 
 			if (action === 'delayed-stop' || action === 'delayed-restart') {
 				clearNeeded = false;
-				const instanceParam = dat.host.instance_id ? ` --instance ${dat.host.instance_id}` : '';
-				cmd = `${dat.host.path}/manage.py${instanceParam} --service ${service} --${action} &`;
+				cmd = `${dat.host.path}/manage.py --service ${service} --${action} &`;
 			}
 			else if (action === 'enable' || action === 'disable') {
 				clearNeeded = true;
@@ -68,7 +66,7 @@ router.post('/:guid?/:host?/:service?', validate_session, (req, res) => {
 			cmdRunner(host, cmd)
 				.then(result => {
 					if (clearNeeded) {
-						cache.default.set(`services_${guid}_${host}_${instanceId}`, null, 1); // Invalidate cache
+						cache.default.set(`services_${guid}_${host}`, null, 1); // Invalidate cache
 					}
 
 					return res.json({

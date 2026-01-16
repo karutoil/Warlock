@@ -22,8 +22,7 @@ router.get('/:host', validate_session, (req, res) => {
 			Object.values(results).forEach(app => {
 				app.hosts.forEach(hostData => {
 					if (hostData.host === host) {
-						const instanceParam = hostData.instance_id ? ` --instance ${hostData.instance_id}` : '';
-						promises.push(cmdRunner(host, `${hostData.path}/manage.py${instanceParam} --get-ports`, {appGuid: app.guid, instanceId: hostData.instance_id || 'default'}));
+						promises.push(cmdRunner(host, `${hostData.path}/manage.py --get-ports`, app.guid));
 					}
 				});
 			});
@@ -32,14 +31,12 @@ router.get('/:host', validate_session, (req, res) => {
 				results.forEach(result => {
 					if (result.status === 'fulfilled') {
 						const stdout = result.value.stdout,
-							appGuid = result.value.extraFields.appGuid,
-							instanceId = result.value.extraFields.instanceId;
+							appGuid = result.value.extraFields;
 						try {
 							const portsData = JSON.parse(stdout);
 							portsData.forEach(portData => {
 								ports.push({
 									guid: appGuid,
-									instance_id: instanceId,
 									port: portData['value'],
 									protocol: portData['protocol'],
 									config: portData['config'],

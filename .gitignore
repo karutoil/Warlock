@@ -3,7 +3,3 @@ DEV/
 .env
 .idea/copilot*
 warlock.sqlite
-__pycache__/
-*.pyc
-*.pyo
-*.pyd

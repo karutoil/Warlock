@@ -21,9 +21,7 @@ const router = express.Router();
 router.put('/:guid/:host', validate_session, (req, res) => {
 	const guid = req.params.guid,
 		host = req.params.host,
-		options = req.body.options || [],
-		instanceId = req.body.instance_id || null,  // Optional instance ID for new installations
-		instanceName = req.body.instance_name || null;
+		options = req.body.options || [];
 
 	if (!guid || !host) {
 		return res.status(400).json({ success: false, error: 'Missing guid or host' });
@@ -51,20 +49,11 @@ router.put('/:guid/:host', validate_session, (req, res) => {
 				// data.app should be an AppData object
 				let branch = null,
 					url = null,
-					cmdData = null,
-					installOptions = [...options];
-
-				// Add instance parameters if provided
-				if (instanceId) {
-					installOptions.push(`--instance-id=${instanceId}`);
-				}
-				if (instanceName) {
-					installOptions.push(`--instance-name=${instanceName}`);
-				}
+					cmdData = null;
 
 				if (appData.source && appData.source.toLowerCase() === 'github' && appData.repo) {
 					// Check to see if the user submitted a branch for this installer
-					installOptions.forEach(option => {
+					options.forEach(option => {
 						if (option.startsWith('--branch') && option.includes('=')) {
 							// This is used to determine the install source, (if provided).
 							branch = option.split('=')[1];
@@ -89,7 +78,7 @@ router.put('/:guid/:host', validate_session, (req, res) => {
 				}
 
 				// Use buildRemoteExec to build the actual command to pass to the guest.
-				cmdData = buildRemoteExec(url, Array.prototype.concat(installOptions, ['--non-interactive']));
+				cmdData = buildRemoteExec(url, Array.prototype.concat(options, ['--non-interactive']));
 
 				logger.debug(cmdData);
 				logger.info(`Installing ${appData.title} on host ${host} with flags ${cmdData.parameters.join(', ')}`);

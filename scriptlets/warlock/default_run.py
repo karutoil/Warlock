@@ -143,8 +143,6 @@ def menu_delayed_action(service, action):
 def menu_get_services(game):
 	"""
 	Get the list of all services for this game in JSON format
-	
-	Includes instance_id when available for multi-instance support
 
 	:param game:
 	:return:
@@ -160,9 +158,6 @@ def menu_get_services(game):
 			'enabled': svc.is_enabled(),
 			'max_players': svc.get_player_max(),
 		}
-		# Include instance_id if available
-		if hasattr(game, 'instance_id') and game.instance_id:
-			svc_stats['instance_id'] = game.instance_id
 		stats[svc.service] = svc_stats
 	print(json.dumps(stats))
 
@@ -170,8 +165,6 @@ def menu_get_services(game):
 def menu_get_metrics(game):
 	"""
 	Get performance metrics for all services for this game in JSON format
-	
-	Includes instance_id when available for multi-instance support
 
 	:param game:
 	:return:
@@ -224,9 +217,6 @@ def menu_get_metrics(game):
 			'pre_exec': pre_exec,
 			'start_exec': start_exec,
 		}
-		# Include instance_id if available
-		if hasattr(game, 'instance_id') and game.instance_id:
-			svc_stats['instance_id'] = game.instance_id
 		stats[svc.service] = svc_stats
 	print(json.dumps(stats))
 
@@ -250,15 +240,6 @@ def run_manager(game):
 		'--debug',
 		help='Enable debug logging output',
 		action='store_true'
-	)
-
-	# Instance specification for multi-instance support
-	parser.add_argument(
-		'--instance',
-		help='Specify the instance ID to operate on (for multi-instance installations)',
-		type=str,
-		default=None,
-		metavar='instance-id'
 	)
 
 	# Service specification - some options can only be performed on a given service
@@ -408,13 +389,6 @@ def run_manager(game):
 
 	if args.debug:
 		logging.basicConfig(level=logging.DEBUG)
-
-	# Set instance ID on the game object if provided
-	if args.instance:
-		game.instance_id = args.instance
-		# Note: Implementers should filter services and paths based on instance_id
-		# For example, services should include instance ID in their systemd service names
-		# Example: palworld-server@550e8400-e29b-41d4-a716-446655440000.service
 
 	services = game.get_services()
 

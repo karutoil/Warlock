@@ -11,17 +11,11 @@ from scriptlets.bz_eval_tui.prompt_text import *
 class BaseService:
 	"""
 	Service definition and handler
-	
-	Multi-instance support:
-	When multiple instances of the same game are installed, each service
-	should include the instance_id in its systemd service name to avoid conflicts.
-	For example: "palworld-server@550e8400-e29b-41d4-a716-446655440000.service"
 	"""
 	def __init__(self, service: str, game: BaseApp):
 		"""
 		Initialize and load the service definition
-		:param service: Service name (should include instance ID for multi-instance support)
-		:param game: BaseApp instance this service belongs to
+		:param file:
 		"""
 		self.service = service
 		self.game = game
