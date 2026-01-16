@@ -12,7 +12,8 @@ const router = express.Router();
  */
 router.post('/:guid/:host', validate_session, (req, res) => {
 	const guid = req.params.guid,
-		host = req.params.host;
+		host = req.params.host,
+		instanceId = req.body.instance_id || null;
 
 	if (!guid || !host) {
 		return res.status(400).json({ success: false, error: 'Missing guid or host' });
@@ -21,8 +22,9 @@ router.post('/:guid/:host', validate_session, (req, res) => {
 	validateHostApplication(host, guid).then(data => {
 		try {
 			// data.host.path holds the installation directory for the app on the host
-			const cmd = `set -euo pipefail; ${data.host.path}/manage.py --backup`;
-			logger.info(`Initiating backup for ${guid} on host ${host}`);
+			const instanceParam = data.host.instance_id ? ` --instance ${data.host.instance_id}` : '';
+			const cmd = `set -euo pipefail; ${data.host.path}/manage.py${instanceParam} --backup`;
+			logger.info(`Initiating backup for ${guid} on host ${host}${data.host.instance_id ? ' instance ' + data.host.instance_id : ''}`);
 
 			cmdStreamer(host, cmd, res).catch(err => {
 				logger.error('cmdStreamer error (backup):', err);
@@ -46,7 +48,8 @@ router.post('/:guid/:host', validate_session, (req, res) => {
 router.put('/:guid/:host', validate_session, (req, res) => {
 	const guid = req.params.guid,
 		host = req.params.host,
-		filename = req.body && req.body.filename ? String(req.body.filename).trim() : '';
+		filename = req.body && req.body.filename ? String(req.body.filename).trim() : '',
+		instanceId = req.body.instance_id || null;
 
 	if (!guid || !host) {
 		return res.status(400).json({ success: false, error: 'Missing guid or host' });
@@ -65,9 +68,10 @@ router.put('/:guid/:host', validate_session, (req, res) => {
 		try {
 			// filename has been validated to be basename-only and not contain quotes
 			const escapedFilename = data.host.path + '/backups/' + String(filename).replace(/"/g, '\\"');
+			const instanceParam = data.host.instance_id ? ` --instance ${data.host.instance_id}` : '';
 
-			const cmd = `set -euo pipefail; ${data.host.path}/manage.py --restore "${escapedFilename}"`;
-			logger.info(`Restoring backup ${filename} for ${guid} on host ${host}`);
+			const cmd = `set -euo pipefail; ${data.host.path}/manage.py${instanceParam} --restore "${escapedFilename}"`;
+			logger.info(`Restoring backup ${filename} for ${guid} on host ${host}${data.host.instance_id ? ' instance ' + data.host.instance_id : ''}`);
 
 			cmdStreamer(host, cmd, res).catch(err => {
 				logger.error('cmdStreamer error (restore):', err);

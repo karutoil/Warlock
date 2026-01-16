@@ -12,7 +12,8 @@ const router = express.Router();
 router.get('/:guid/:host', validate_session, (req, res) => {
 	const host = req.params.host,
 		guid = req.params.guid,
-		cacheKey = `app_configs_${guid}_${host}`;
+		instanceId = req.query.instance_id || 'default',
+		cacheKey = `app_configs_${guid}_${host}_${instanceId}`;
 
 	validateHostApplication(host, guid)
 		.then(dat => {
@@ -54,7 +55,8 @@ router.get('/:guid/:host', validate_session, (req, res) => {
 router.post('/:guid/:host', async (req, res) => {
 	const host = req.params.host,
 		guid = req.params.guid,
-		cacheKey = `app_configs_${guid}_${host}`;
+		instanceId = req.body.instance_id || 'default',
+		cacheKey = `app_configs_${guid}_${host}_${instanceId}`;
 
 	validateHostApplication(host, guid)
 		.then(dat => {
@@ -62,8 +64,9 @@ router.post('/:guid/:host', async (req, res) => {
 			const updatePromises = [];
 			for (let option in configUpdates) {
 				const value = configUpdates[option];
+				const instanceParam = dat.host.instance_id ? ` --instance ${dat.host.instance_id}` : '';
 				updatePromises.push(
-					cmdRunner(dat.host.host, `${dat.host.path}/manage.py --set-config "${option}" "${value}"`)
+					cmdRunner(dat.host.host, `${dat.host.path}/manage.py${instanceParam} --set-config "${option}" "${value}"`)
 				);
 			}
 			Promise.all(updatePromises)

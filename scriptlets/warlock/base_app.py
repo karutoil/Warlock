@@ -13,6 +13,16 @@ from scriptlets.bz_eval_tui.prompt_text import *
 class BaseApp:
 	"""
 	Game application manager
+	
+	Multi-instance support:
+	This class can manage multiple instances of the same game on the same host.
+	When --instance <INSTANCE_ID> is passed to manage.py, operations should be
+	scoped to that specific instance. Each instance should have:
+	- Unique installation directory (can use --dir parameter)
+	- Unique systemd service names (include instance ID in service name)
+	- Unique configuration and save directories
+	- Unique port allocations
+	- Separate backup/restore paths
 	"""
 
 	def __init__(self):
@@ -26,6 +36,12 @@ class BaseApp:
 		"""
 		:type str:
 		Description / full name of this game
+		"""
+
+		self.instance_id = None
+		"""
+		:type str:
+		UUID of this specific instance (None for default/single instance)
 		"""
 
 		self.services = []

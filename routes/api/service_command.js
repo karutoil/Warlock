@@ -9,7 +9,7 @@ const router = express.Router();
  * Send a command to a game server console
  */
 router.post('/', validate_session, (req, res) => {
-	const { guid, host, service, command } = req.body;
+	const { guid, host, service, command, instance_id } = req.body;
 
 	if (!(host && guid && service && command)) {
 		return res.json({
@@ -21,10 +21,11 @@ router.post('/', validate_session, (req, res) => {
 	validateHostService(host, guid, service)
 		.then(dat => {
 			const escapedCmd = command.replace(/"/g, '\\"');
+			const instanceParam = dat.host.instance_id ? ` --instance ${dat.host.instance_id}` : '';
 			
 			// Try systemd socket first, then fall back to RCON
 			const cmd = `(SOCKET_UNIT=$(systemctl cat "${service}.service" 2>/dev/null | grep -oP 'Sockets=\\K[^\\s]+') && [ -n "$SOCKET_UNIT" ] && SOCKET_PATH=$(systemctl show -p Listen --value "$SOCKET_UNIT" 2>/dev/null | head -n1 | awk '{print $1}') && [ -n "$SOCKET_PATH" ] && [ -p "$SOCKET_PATH" ] && echo "${escapedCmd}" > "$SOCKET_PATH" && echo "Command sent via systemd socket ($SOCKET_PATH)") || ` +
-				`([ -f "${dat.host.path}/manage.py" ] && ${dat.host.path}/manage.py --help 2>&1 | grep -q -- "--rcon" && ${dat.host.path}/manage.py --service ${service} --rcon "${escapedCmd}") || ` +
+				`([ -f "${dat.host.path}/manage.py" ] && ${dat.host.path}/manage.py --help 2>&1 | grep -q -- "--rcon" && ${dat.host.path}/manage.py${instanceParam} --service ${service} --rcon "${escapedCmd}") || ` +
 				`(echo "Console input not available. Service does not have a systemd socket or RCON support." >&2 && exit 1)`;
 
 			cmdRunner(host, cmd)

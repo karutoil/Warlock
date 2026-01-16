@@ -13,7 +13,8 @@ router.get('/:guid/:host/:service', validate_session, (req, res) => {
 	const host = req.params.host,
 		guid = req.params.guid,
 		service = req.params.service,
-		cacheKey = `service_configs_${guid}_${host}_${service}`;
+		instanceId = req.query.instance_id || 'default',
+		cacheKey = `service_configs_${guid}_${host}_${instanceId}_${service}`;
 
 	validateHostService(host, guid, service)
 		.then(dat => {
@@ -56,7 +57,8 @@ router.post('/:guid/:host/:service', async (req, res) => {
 	const host = req.params.host,
 		guid = req.params.guid,
 		service = req.params.service,
-		cacheKey = `service_configs_${guid}_${host}_${service}`;
+		instanceId = req.body.instance_id || 'default',
+		cacheKey = `service_configs_${guid}_${host}_${instanceId}_${service}`;
 
 	validateHostService(host, guid, service)
 		.then(dat => {
@@ -64,15 +66,16 @@ router.post('/:guid/:host/:service', async (req, res) => {
 			const updatePromises = [];
 			for (let option in configUpdates) {
 				const value = configUpdates[option];
+				const instanceParam = dat.host.instance_id ? ` --instance ${dat.host.instance_id}` : '';
 				updatePromises.push(
-					cmdRunner(dat.host.host, `${dat.host.path}/manage.py --service ${dat.service.service} --set-config "${option}" "${value}"`)
+					cmdRunner(dat.host.host, `${dat.host.path}/manage.py${instanceParam} --service ${dat.service.service} --set-config "${option}" "${value}"`)
 				);
 			}
 			Promise.all(updatePromises)
 				.then(result => {
 
 					// Clear the cache data for this service, useful for keys like name or port.
-					cache.default.set(`services_${guid}_${host}`, null, 1); // Invalidate cache
+					cache.default.set(`services_${guid}_${host}_${instanceId}`, null, 1); // Invalidate cache
 					cache.default.set(cacheKey, null, 1);
 
 					return res.json({

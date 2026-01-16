@@ -17,21 +17,24 @@ export async function getApplicationMetrics(appData, hostData, service = null) {
 	return new Promise((resolve, reject) => {
 
 		const guid = appData.guid,
+			instanceId = hostData.instance_id || 'default',
 			requestStartTime = Date.now();
 		let cmd;
 
 		if (hostData.options.includes('get-metrics')) {
 			// Application supports service-level metrics collection
+			const instanceParam = hostData.instance_id ? ` --instance ${hostData.instance_id}` : '';
 			if (service) {
-				cmd = `${hostData.path}/manage.py --service ${service} --get-metrics`
+				cmd = `${hostData.path}/manage.py${instanceParam} --service ${service} --get-metrics`
 			}
 			else {
-				cmd = `${hostData.path}/manage.py --get-metrics`
+				cmd = `${hostData.path}/manage.py${instanceParam} --get-metrics`
 			}
 		}
 		else {
 			// Fallback to general status of all services
-			cmd = `${hostData.path}/manage.py --get-services`
+			const instanceParam = hostData.instance_id ? ` --instance ${hostData.instance_id}` : '';
+			cmd = `${hostData.path}/manage.py${instanceParam} --get-services`
 		}
 
 
@@ -85,7 +88,7 @@ export async function getApplicationMetrics(appData, hostData, service = null) {
 						}
 
 						if (typeof(svc.players) !== 'undefined') {
-							cache.set(`players_${guid}_${hostData.host}_${svcName}`, svc.players, 5 * 60); // Cache for 5 minutes
+							cache.set(`players_${guid}_${hostData.host}_${instanceId}_${svcName}`, svc.players, 5 * 60); // Cache for 5 minutes
 						}
 					}
 				}
