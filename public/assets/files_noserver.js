@@ -15,39 +15,72 @@ function displayHostsWithApplications(hosts, applications) {
 	for (const [host, hostData] of Object.entries(hosts)) {
 		console.debug(hostData);
 		// Extract the last folder name from the path
-		let //pathParts = app.path.split('/').filter(part => part.length > 0),
-			displayName = hostData.hostname || host,
-			icon = renderHostIcon(host),
-			thumbnail = null,
-			thumbnailFallback = [];
+		let displayName = hostData.hostname || host,
+			osImage = null;
 
 		if (hostData.os.name && hostData.os.version) {
-			thumbnail = `/assets/media/wallpapers/servers/${hostData.os.name.toLowerCase()}_${hostData.os.version.toLowerCase()}.webp`;
-		}
-		thumbnailFallback = '/assets/media/wallpapers/servers/generic.webp';
-
-		if (thumbnail) {
-			thumbnail = '<img class="os-thumbnail" src="' + thumbnail + '" alt="' + displayName + ' Thumbnail" onerror="this.onerror=null;this.src=\'' + thumbnailFallback + '\';">';
+			osImage = `/assets/media/wallpapers/servers/${hostData.os.name.toLowerCase()}_${hostData.os.version.toLowerCase()}.webp`;
 		}
 		else {
-			thumbnail = '<img class="os-thumbnail" src="' + thumbnailFallback + '" alt="' + displayName + ' Thumbnail">';
+			osImage = '/assets/media/wallpapers/servers/generic.webp';
+		}
+
+		// IP display logic
+		let rawIp = hostData.ip || '';
+		let publicIp = hostData.public_ip || '';
+		let ipDisplay = rawIp;
+		if (rawIp === '127.0.0.1' || rawIp === '::1' || rawIp.toLowerCase() === 'localhost' || rawIp.startsWith('127.')) {
+			ipDisplay = publicIp || hostData.hostname || rawIp;
+		}
+
+		// Calculate stats
+		const cpuPercent = Math.max(0, Math.min(100, Number(hostData.cpu.usage) || 0));
+		const used = Number(hostData.memory.used || 0);
+		const total = Number(hostData.memory.total || 0) || 1;
+		const threads = hostData.cpu.threads || 0;
+		const physical = hostData.cpu.physical_cores || (hostData.cpu.cores_per_socket && hostData.cpu.count ? (hostData.cpu.cores_per_socket * hostData.cpu.count) : 0);
+		let modelText = hostData.cpu.model || 'Unknown';
+		if (hostData.cpu.count > 1) {
+			modelText = `${hostData.cpu.count}x ${modelText}`;
+		}
+		let coreText = '';
+		if (physical && physical > 0) {
+			coreText = `${physical} / ${threads}`;
+		} else {
+			coreText = `${threads}`;
 		}
 
 		html += `
 			<div class="host-card">
-				${thumbnail}
-				<div class="host-name">
-					<div class="host-icon">
-						${icon}
+				<div class="host-card-header" style="background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('${osImage}'); background-size: cover; background-position: center;">
+					<div class="host-card-title">
+						<h3>${displayName}</h3>
+						<p>${ipDisplay}</p>
 					</div>
-					<div style="flex: 1;">
-						<h4>${displayName}</h4>
-					</div>
-				</div>`;
+				</div>
+				<div class="host-card-body">
+					<div class="host-stats">
+						<div class="host-stat">
+							<span class="host-stat-label">CPU Usage</span>
+							<span class="host-stat-value">${cpuPercent}%</span>
+						</div>
+						<div class="host-stat">
+							<span class="host-stat-label">CPU Model</span>
+							<span class="host-stat-value">${modelText}</span>
+						</div>
+						<div class="host-stat">
+							<span class="host-stat-label">Memory</span>
+							<span class="host-stat-value">${formatFileSize(used)} / ${formatFileSize(total)}</span>
+						</div>
+						<div class="host-stat">
+							<span class="host-stat-label">Cores</span>
+							<span class="host-stat-value">${coreText}</span>
+						</div>
+					</div>`;
 
 		// Add the list of file systems on this host along with a pretty bargraph of disk usage
 		if (hostData.disks && hostData.disks.length > 0) {
-			html += `<div class="host-disks"><h5>Filesystems</h5>`;
+			html += `<div class="host-disks" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);"><h5 style="font-size: 0.75rem; text-transform: uppercase; opacity: 0.7; margin-bottom: 0.5rem;">Filesystems</h5>`;
 			hostData.disks.forEach(fs => {
 				let usagePercent = fs.size > 0 ? (fs.used / fs.size) * 100 : 0,
 					usageStatus;
@@ -77,7 +110,7 @@ function displayHostsWithApplications(hosts, applications) {
 		}
 
 		// Add any application installed on this host
-		html += '<div class="app-installs"><h5>Games Installed</h5>';
+		html += '<div class="app-installs" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);"><h5 style="font-size: 0.75rem; text-transform: uppercase; opacity: 0.7; margin-bottom: 0.5rem;">Games Installed</h5>';
 		for (const [guid, app] of Object.entries(applications)) {
 			let isInstalled = app.hosts.some(h => h.host === host);
 			if (isInstalled) {
@@ -88,7 +121,7 @@ function displayHostsWithApplications(hosts, applications) {
 			}
 		}
 
-		html += `</div></div>`;
+		html += `</div></div></div>`;
 	}
 
 	container.innerHTML = html;

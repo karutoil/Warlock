@@ -33,17 +33,9 @@
                         <i class="fas fa-th-large"></i>
                         Available Servers
                     </h3>
-                    <div id="hostsList">
+                    <div id="hostsList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 1.5rem;">
                         <!-- Servers will be inserted here -->
-                        <div style="grid-column: 1 / -1;">
-                            <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
-                            <p>Loading hosts...</p>
-                        </div>
                     </div>
-                </div>
-
-                <div id="servicesContainer" style="margin-bottom: 2rem;">
-                    <!-- Services table will be inserted here -->
                 </div>
             </div>
         </main>
@@ -51,6 +43,6 @@
 
 
 <%- include('partials/theme-selector.ejs') %>
-<script src="/assets/files_noserver.js"></script>
+<script src="/assets/hosts.js"></script>
 </body>
 </html>
