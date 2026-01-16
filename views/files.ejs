@@ -15,143 +15,219 @@
 <body>
 <%- include('partials/nav.ejs') %>
 
-    <div class="files-container">
-        <div class="files-layout">
-            <!-- Left: File Browser -->
-            <div class="browser-card">
-                <div class="card-header">
-                    <div class="path-controls">
-                        <div class="current-path" id="currentPath">/home/steam</div>
-                        <div class="action-buttons" style="margin-top: 0.5rem;">
-                            <button id="createFolderBtn" class="btn-nav btn-action" title="Create Folder">
-                                <i class="fas fa-folder-plus"></i>
-                                Folder
-                            </button>
-                            <button id="createFileBtn" class="btn-nav btn-action" title="Create File">
-                                <i class="fas fa-plus"></i>
-                                File
-                            </button>
-                            <button id="uploadBtn" class="btn-nav btn-upload" title="Upload Files">
-                                <i class="fas fa-cloud-upload-alt"></i>
-                                Upload
-                            </button>
-                            <input type="file" id="fileInput" multiple style="display: none;" />
-                            <button id="refreshBtn" class="btn-nav" title="Refresh">
-                                <i class="fas fa-sync-alt"></i>
-                            </button>
-                            <button id="upBtn" class="btn-nav" title="Go Up">
-                                <i class="fas fa-level-up-alt"></i>
-                            </button>
+    <!-- Modals at top level for proper fixed positioning -->
+    <div id="fileEditorModal" class="modal wide">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="fileEditorTitle"><i class="fas fa-edit"></i> Edit File</h3>
+                <button class="modal-close" onclick="closeFileModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="fileEditorContainer"></div>
+                <textarea id="fileEditorTextarea" style="display: none;" placeholder="File content will appear here..."></textarea>
+                <div id="fileEditorStatus" class="info-message" style="display:none; margin-top: 0.5rem;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-save" id="fileEditorSaveBtn" onclick="saveFileEdits()">
+                    <i class="fas fa-save"></i>
+                    Save Changes
+                </button>
+                <button class="action-download" id="fileEditorDownloadBtn" onclick="downloadCurrentFile()" style="display:none;">
+                    <i class="fas fa-download"></i>
+                    Download Instead
+                </button>
+                <button class="action-cancel" onclick="closeFileModal()">
+                    <i class="fas fa-times"></i>
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal for Delete and Other Actions -->
+    <div id="confirmationModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="confirmationTitle"><i class="fas fa-exclamation-triangle"></i> Confirm Action</h3>
+                <button class="modal-close" onclick="closeConfirmationModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmationMessage" style="margin-bottom: 1.5rem;"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="action-remove" id="confirmationConfirmBtn" onclick="executeConfirmation()">
+                    <i class="fas fa-check"></i>
+                    Confirm
+                </button>
+                <button class="action-cancel" onclick="closeConfirmationModal()">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Input Modal for File Operations -->
+    <div id="fileActionModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="fileActionTitle"><i class="fas fa-file"></i> File Action</h3>
+                <button class="modal-close" onclick="closeFileActionModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <label id="fileActionLabel" style="display: block; margin-bottom: 0.5rem; font-weight: 500;"></label>
+                <input type="text" id="fileActionInput" placeholder="" style="width: 100%; padding: 0.5rem; border: 1px solid #0096ff; border-radius: 4px; background: #1a1a2e; color: #0096ff; font-family: monospace;">
+                <div id="fileActionHint" style="display: none; margin-top: 0.5rem; font-size: 0.85rem; color: #0096ff; opacity: 0.7;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-save" id="fileActionConfirmBtn" onclick="confirmFileAction()">
+                    <i class="fas fa-check"></i>
+                    Confirm
+                </button>
+                <button class="action-cancel" onclick="closeFileActionModal()">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Browser Context Menu -->
+    <div id="fileContextMenu" class="context-menu" style="display: none;">
+        <button class="context-menu-item" id="contextEdit">
+            <i class="fas fa-edit"></i>
+            <span>Edit</span>
+        </button>
+        <button class="context-menu-item" id="contextDownload">
+            <i class="fas fa-download"></i>
+            <span>Download</span>
+        </button>
+        <button class="context-menu-item" id="contextCopy">
+            <i class="fas fa-copy"></i>
+            <span>Copy</span>
+        </button>
+        <button class="context-menu-item" id="contextMove">
+            <i class="fas fa-arrows-alt"></i>
+            <span>Move</span>
+        </button>
+        <button class="context-menu-item" id="contextRename">
+            <i class="fas fa-pencil-alt"></i>
+            <span>Rename</span>
+        </button>
+        <button class="context-menu-item" id="contextZip">
+            <i class="fas fa-file-zipper"></i>
+            <span>Zip Folder</span>
+        </button>
+        <button class="context-menu-item" id="contextExtract">
+            <i class="fas fa-box-open"></i>
+            <span>Extract</span>
+        </button>
+        <button class="context-menu-item action-remove" id="contextDelete">
+            <i class="fas fa-trash"></i>
+            <span>Delete</span>
+        </button>
+        <div class="context-menu-separator"></div>
+        <button class="context-menu-item" id="contextUpload">
+            <i class="fas fa-upload"></i>
+            <span>Upload File</span>
+        </button>
+    </div>
+
+    <div class="main-container" style="grid-template-columns: 1fr; max-width: 90vw; height: 90vh; margin: 1rem auto;">
+        <main class="content-area" style="display: flex; flex-direction: column; height: 100%; gap: 1rem;">
+            <!-- File Manager Header -->
+            <div class="server-header">
+                <div class="server-header-top">
+                    <div class="server-header-info">
+                        <div class="server-header-icon">
+                            <i class="fas fa-folder"></i>
+                        </div>
+                        <div class="server-header-details">
+                            <h1>File Manager</h1>
+                            <p><i class="fas fa-folder-open"></i> Current Path: <span id="currentPathDisplay">/home/steam</span></p>
                         </div>
                     </div>
-                </div>
-                
-                <!-- File Search -->
-                <!--<div style="padding: 1rem; border-bottom: 1px solid rgba(0, 150, 255, 0.2);">
-                    <div style="position: relative;">
-                        <i class="fas fa-search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #64748b;"></i>
-                        <input type="text" id="fileSearch" placeholder="Search files and folders..." style="width: 100%; padding: 0.75rem 2.5rem 0.75rem 2.5rem; background: rgba(0, 40, 80, 0.4); border: 1px solid rgba(0, 150, 255, 0.3); border-radius: 8px; color: #e2e8f0; font-size: 0.9rem; outline: none; transition: all 0.3s;">
-                        <button id="searchClear" style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; color: #64748b; cursor: pointer; padding: 0.5rem; display: none;">
-                            <i class="fas fa-times"></i>
+                    <div class="server-header-actions">
+                        <button class="server-header-btn" onclick="window.location.href='/files'">
+                            <i class="fas fa-redo"></i> Home
                         </button>
                     </div>
                 </div>
-                -->
-                
-                <div class="file-browser" style="height: 100%; overflow-y: auto;">
-                    <div class="sidebar-browser">
-                        <div class="quick-paths">
-
-                        </div>
-                    </div>
-                    
-                    <div class="main-browser">
-                        <div id="fileList" class="file-list">
-                            <div style="text-align: center; color: #666; padding: 2rem;">
-                                <i class="fas fa-folder-open" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
-                                Click "Refresh" or select a quick path to browse files
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
-            
-            <!-- Resizer -->
-            <div class="resizer"></div>
-            
-            <!-- Right: File Viewer/Editor -->
-            <div class="file-viewer-card">
-                <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-                    <h2 id="viewerTitle">
-                        <i class="fas fa-file"></i>
-                        File Viewer
-                    </h2>
-                    <div style="display: flex; align-items: center; gap: 1rem;">
-                        <!-- Search Bar (shown when viewing/editing) -->
-                        <div id="viewerSearchBar" class="search-bar" style="display: none; align-items: center; gap: 0.5rem;">
-                            <input type="text" id="viewerSearch" class="search-input" placeholder="Search in file..." style="width: 200px; padding: 0.4rem 0.8rem; font-size: 0.85rem;">
-                            <div class="button-group">
-                                <button id="viewerSearchPrev" class="btn-editor" style="padding: 0.4rem 0.8rem;">
-                                    <i class="fas fa-chevron-up"></i>
-                                </button>
-                                <button id="viewerSearchNext" class="btn-editor" style="padding: 0.4rem 0.8rem;">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
-                            </div>
-                            <span id="viewerSearchCount" style="font-size: 0.85rem; color: #94a3b8;"></span>
-                        </div>
-                        <!-- Action Buttons -->
-                        <div id="viewerActions" class="action-buttons" style="display: none; gap: 0.5rem;">
-                            <button id="saveFileBtn" class="action-save">
-                                <i class="fas fa-save"></i>
-                                Save
+
+            <!-- File Browser -->
+            <div class="file-browser" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <div class="file-browser-header">
+                    <button class="server-header-btn" onclick="navigateUp()" title="Go Up One Level">
+                        <i class="fas fa-arrow-up"></i>
+                    </button>
+                    <input type="text" class="file-browser-path" id="currentPath" value="/home/steam" readonly>
+                    <button class="server-header-btn" onclick="refreshFiles()" title="Refresh">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                    <div class="dropdown-container" style="position: relative; display: inline-block;">
+                        <button class="server-header-btn" id="createItemBtn" onclick="toggleCreateDropdown()">
+                            <i class="fas fa-plus"></i> Create
+                        </button>
+                        <div id="createDropdown" class="dropdown-menu" style="display: none; position: absolute; background: rgba(18,20,36,0.98); border: 1px solid rgba(0,150,255,0.12); border-radius: 6px; z-index: 100; min-width: 180px; top: 100%; right: 0; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55); padding: 0.25rem 0;">
+                            <button class="dropdown-item" onclick="openNewFileModal()" style="display: block; width: 100%; text-align: left; padding: 0.75rem 1rem; background: none; border: none; color: var(--text-color); cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0, 150, 255, 0.1)'" onmouseout="this.style.background='none'">
+                                <i class="fas fa-file"></i> New File
                             </button>
-                            <button id="downloadFileBtn" class="action-download">
-                                <i class="fas fa-download"></i>
-                                Download
-                            </button>
-                            <button id="restoreBackupFileBtn" class="action-restore">
-                                <i class="fas fa-undo"></i>
-                                Restore Backup
+                            <button class="dropdown-item" onclick="openNewFolderModal()" style="display: block; width: 100%; text-align: left; padding: 0.75rem 1rem; background: none; border: none; color: var(--text-color); cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(0, 150, 255, 0.1)'" onmouseout="this.style.background='none'">
+                                <i class="fas fa-folder-plus"></i> New Folder
                             </button>
                         </div>
                     </div>
+                    <button class="server-header-btn" id="uploadBtn" title="Upload Files">
+                        <i class="fas fa-cloud-upload-alt"></i> Upload
+                    </button>
                 </div>
-                
-                <!-- Empty State -->
-                <div id="viewerEmptyState" style="flex: 1; overflow: auto; padding: 1.5rem; background: rgba(0, 0, 0, 0.3); display: none; align-items: center; justify-content: center;">
-                    <div style="text-align: center; color: #666; padding: 4rem 2rem;">
-                        <i class="fas fa-file-alt" style="font-size: 4rem; margin-bottom: 1rem; display: block; opacity: 0.3;"></i>
-                        <p style="font-size: 1.1rem;">Select a file to view or edit</p>
+
+                <!-- Quick Paths/Favorites Section -->
+                <div style="border-bottom: 1px solid rgba(0, 150, 255, 0.1); background: rgba(0, 20, 40, 0.3);">
+                    <!-- Standard Quick Paths -->
+                    <div style="padding: 1rem 1rem 0 1rem;">
+                        <h4 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em;">Quick Paths</h4>
+                        <div id="quickPaths" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; margin-bottom: 1rem;">
+                            <!-- Quick paths will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Games Quick Links -->
+                    <div style="padding: 1rem 1rem 0 1rem; display: none;" id="gamesSection">
+                        <h4 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em;">Games</h4>
+                        <div id="gameQuickLinks" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem; margin-bottom: 1rem;">
+                            <!-- Game shortcuts will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Applications Quick Links -->
+                    <div style="padding: 1rem 1rem 1rem 1rem; display: none;" id="applicationsSection">
+                        <h4 style="margin: 0 0 0.75rem 0; font-size: 0.85rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em;">Applications</h4>
+                        <div id="appQuickLinks" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.5rem;">
+                            <!-- Application shortcuts will be populated here -->
+                        </div>
                     </div>
                 </div>
 
-                <!-- Loading State -->
-                <div id="viewerLoadingState" style="flex: 1; overflow: auto; padding: 1.5rem; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center;">
-                    <div style="text-align: center; color: #666; padding: 4rem 2rem;">
-                        <i class="fas fa-file-alt" style="font-size: 4rem; margin-bottom: 1rem; display: block; opacity: 0.3;"></i>
-                        <p style="font-size: 1.1rem;">Loading Content, please wait a moment</p>
-                        <p style="font-size:4rem; margin-top:1rem;"><i class="fas fa-spinner fa-spin"></i></p>
-                    </div>
-                </div>
-                
-                <!-- File Preview (for viewing) -->
-                <div id="filePreviewContent" class="file-preview">
-                    <div id="previewContent"></div>
-                </div>
-                
-                <!-- File Editor (for editing) -->
-                <div id="fileEditorContent" style="display: none; flex: 1; overflow: hidden; flex-direction: column;">
-                    <div id="editorContainer" style="flex: 1; overflow: hidden;"></div>
-                    <textarea id="editorTextarea" style="display: none;" placeholder="File content will appear here..."></textarea>
-                    <div style="padding: 0.75rem 1.5rem; background: rgba(0, 40, 80, 0.4); border-top: 1px solid rgba(0, 150, 255, 0.2); display: flex; justify-content: space-between; font-size: 0.85rem; color: #87ceeb;">
-                        <span id="editorInfo">Ready to edit</span>
-                        <span id="editorStats"></span>
+                <!-- File List -->
+                <div class="file-list" id="fileList" style="flex: 1; overflow-y: auto; border-bottom: 1px solid rgba(0, 150, 255, 0.1);">
+                    <div style="text-align: center; color: #666; padding: 2rem;">
+                        <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+                        <p>Loading files...</p>
                     </div>
                 </div>
             </div>
-        </div>
-        
+        </main>
     </div>
 
     <!-- Create Folder Modal -->
@@ -160,7 +236,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-folder-plus"></i> Create New Folder</h3>
-                <button class="modal-close">
+                <button class="modal-close" onclick="closeCreateFolderModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -171,11 +247,11 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="action-create" id="confirmCreateFolder">
+                <button class="action-create" id="confirmCreateFolder" onclick="createNewFolder()">
                     <i class="fas fa-folder-plus"></i>
                     Create Folder
                 </button>
-                <button class="action-cancel modal-close">
+                <button class="action-cancel modal-close" onclick="closeCreateFolderModal()">
                     <i class="fas fa-times"></i>
                     Cancel
                 </button>
@@ -189,7 +265,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-file"></i> Create New File</h3>
-                <button class="modal-close">
+                <button class="modal-close" onclick="closeCreateFileModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -204,11 +280,11 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="action-save" id="confirmCreateFile">
+                <button class="action-save" id="confirmCreateFile" onclick="createNewFile()">
                     <i class="fas fa-save"></i>
                     Create File
                 </button>
-                <button class="action-cancel modal-close">
+                <button class="action-cancel modal-close" onclick="closeCreateFileModal()">
                     <i class="fas fa-times"></i>
                     Cancel
                 </button>
@@ -222,7 +298,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-exclamation-triangle"></i> Confirm Deletion</h3>
-                <button class="modal-close">
+                <button class="modal-close" onclick="closeDeleteModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -236,11 +312,11 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="action-remove" id="confirmDelete">
+                <button class="action-remove" id="confirmDelete" onclick="executeDeleteFile()">
                     <i class="fas fa-trash"></i>
                     Delete Permanently
                 </button>
-                <button class="action-cancel modal-close">
+                <button class="action-cancel modal-close" onclick="closeDeleteModal()">
                     <i class="fas fa-times"></i>
                     Cancel
                 </button>
@@ -254,7 +330,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-edit"></i> Rename Item</h3>
-                <button class="modal-close">
+                <button class="modal-close" onclick="closeRenameModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -273,36 +349,16 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-nav btn-action" id="confirmRename">
+                <button class="btn-nav btn-action" id="confirmRename" onclick="executeRename()">
                     <i class="fas fa-edit"></i>
                     Rename
                 </button>
-                <button class="action-cancel modal-close">
+                <button class="action-cancel modal-close" onclick="closeRenameModal()">
                     <i class="fas fa-times"></i>
                     Cancel
                 </button>
             </div>
         </div>
-    </div>
-
-    <!-- Context Menu -->
-    <div id="contextMenu" class="context-menu">
-        <button class="action-rename context-menu-item" id="contextRename">
-            <i class="fas fa-edit"></i>
-            <span>Rename</span>
-        </button>
-        <button class="action-download context-menu-item" id="contextDownload">
-            <i class="fas fa-download"></i>
-            <span>Download</span>
-        </button>
-        <button class="action-extract context-menu-item" id="contextExtract">
-            <i class="fas fa-file-zipper"></i>
-            <span>Extract Archive</span>
-        </button>
-        <button class="action-remove context-menu-item" id="contextDelete">
-            <i class="fas fa-trash"></i>
-            <span>Delete</span>
-        </button>
     </div>
 
     <!-- Upload Progress Modal -->
@@ -311,7 +367,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-cloud-upload-alt"></i> Upload Files</h3>
-                <button class="modal-close">
+                <button class="modal-close" onclick="closeUploadModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -325,11 +381,11 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn-nav btn-upload" id="confirmUpload">
+                <button class="btn-nav btn-upload" id="confirmUpload" onclick="startUpload()">
                     <i class="fas fa-cloud-upload-alt"></i>
                     Start Upload
                 </button>
-                <button class="action-cancel modal-close">
+                <button class="action-cancel modal-close" onclick="closeUploadModal()">
                     <i class="fas fa-times"></i>
                     Cancel
                 </button>
@@ -337,13 +393,13 @@
         </div>
     </div>
 
-    <!-- Restore Backup (and confirmation) Modal -->
+    <!-- Restore Backup Modal -->
     <div id="restoreConfirmModal" class="modal">
         <div class="modal-overlay"></div>
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-undo"></i> Restore Backup</h3>
-                <button class="modal-close">
+                <button class="modal-close" onclick="closeRestoreModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -359,11 +415,11 @@
                 <div class="terminal"></div>
             </div>
             <div class="modal-footer">
-                <button class="action-restore" id="confirmRestore">
+                <button class="action-restore" id="confirmRestore" onclick="executeRestore()">
                     <i class="fas fa-undo"></i>
                     Confirm Restore
                 </button>
-                <button class="action-cancel modal-close">
+                <button class="action-cancel modal-close" onclick="closeRestoreModal()">
                     <i class="fas fa-times"></i>
                     Cancel
                 </button>
@@ -372,17 +428,1058 @@
     </div>
 
 <%- include('partials/theme-selector.ejs') %>
-<script src="/assets/files.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/shell/shell.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/json/json.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/nginx/nginx.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/dockerfile/dockerfile.min.js"></script>
+<input type="file" id="fileInput" multiple style="display: none;" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/shell/shell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/json/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/nginx/nginx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/dockerfile/dockerfile.min.js"></script>
+<script>
+    // ============================================================================
+    // STATE MANAGEMENT SYSTEM
+    // ============================================================================
+    // Centralized state management for file operations to prevent:
+    // - Race conditions between operations
+    // - Duplicate state updates
+    // - Inconsistent UI state
+    // ============================================================================
+
+    // DOM Element Cache - prevent repeated querySelectorAll calls
+    const DOM = {
+        fileList: null,
+        currentPath: null,
+        quickPaths: null
+    };
+
+    // Quick paths configuration - commonly used directories
+    const QUICK_PATHS = [
+        { label: 'Home', path: '/home/steam', icon: 'fa-home' },
+        { label: 'Root', path: '/', icon: 'fa-folder' },
+        { label: 'Tmp', path: '/tmp', icon: 'fa-snowflake' },
+        { label: 'Opt', path: '/opt', icon: 'fa-box' },
+        { label: 'Var', path: '/var', icon: 'fa-database' },
+        { label: 'Etc', path: '/etc', icon: 'fa-gears' }
+    ];
+
+    /**
+     * Core application state object
+     * All state mutations must go through setState() for consistency tracking
+     */
+    const AppState = {
+        // Current navigation path
+        currentPath: '/home/steam',
+        
+        // UI operation flags - prevent overlapping operations
+        operations: {
+            fileOpInProgress: false,     // File operations (rename, delete, etc)
+            uploadInProgress: false,     // Upload operation in progress
+            downloadInProgress: false    // Download operation in progress
+        },
+
+        // Current file being edited
+        ui: {
+            editingFile: null,           // Currently edited file path
+            selectedFile: null,          // Currently selected file
+            fileActionCallback: null,    // Callback for file action modal
+            confirmCallback: null        // Callback for confirmation modal
+        },
+
+        // CodeMirror editor instance
+        config: {
+            fileEditor: null             // CodeMirror editor instance
+        },
+
+        // Debug/logging
+        debug: {
+            enableLogging: false         // Set true for verbose logging
+        }
+    };
+
+    /**
+     * Type-safe state setter with change tracking
+     * All state mutations MUST use this function
+     */
+    function setState(path, value) {
+        const setNested = (obj, pathStr, val) => {
+            const keys = pathStr.split('.');
+            let current = obj;
+            
+            for (let i = 0; i < keys.length - 1; i++) {
+                const key = keys[i];
+                if (!(key in current)) {
+                    current[key] = {};
+                }
+                current = current[key];
+            }
+            
+            const lastKey = keys[keys.length - 1];
+            const oldValue = current[lastKey];
+            current[lastKey] = val;
+
+            if (AppState.debug.enableLogging) {
+                const timestamp = new Date().toLocaleTimeString();
+                console.log(`[STATE] [${timestamp}] ${path}: ${JSON.stringify(oldValue)} → ${JSON.stringify(val)}`);
+            }
+
+            return oldValue !== val;
+        };
+
+        return setNested(AppState, path, value);
+    }
+
+    /**
+     * Safe getter for nested state properties
+     */
+    function getState(path) {
+        const keys = path.split('.');
+        let current = AppState;
+        
+        for (const key of keys) {
+            if (current === null || current === undefined) {
+                console.warn(`[STATE] Accessing undefined path: ${path}`);
+                return undefined;
+            }
+            current = current[key];
+        }
+        
+        return current;
+    }
+
+    /**
+     * Check if any operation is currently in progress
+     */
+    function isOperationInProgress() {
+        const ops = AppState.operations;
+        return ops.fileOpInProgress || ops.uploadInProgress || ops.downloadInProgress;
+    }
+
+    // ============================================================================
+    // INITIALIZATION
+    // ============================================================================
+
+    // Cache DOM elements
+    function initializeDOMCache() {
+        DOM.fileList = document.getElementById('fileList');
+        DOM.currentPath = document.getElementById('currentPath');
+        DOM.quickPaths = document.getElementById('quickPaths');
+    }
+
+    // Initialize on DOM ready
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeDOMCache();
+        renderQuickPaths();
+        loadGamesAndApplications();
+        loadFiles(AppState.currentPath);
+        attachEventListeners();
+    });
+
+    // ============================================================================
+    // QUICK PATHS
+    // ============================================================================
+
+    function renderQuickPaths() {
+        if (!DOM.quickPaths) return;
+        
+        DOM.quickPaths.innerHTML = '';
+        QUICK_PATHS.forEach(quickPath => {
+            const btn = document.createElement('button');
+            btn.className = 'quick-path-btn';
+            btn.title = quickPath.path;
+            btn.innerHTML = `<i class="fas ${quickPath.icon}"></i><span>${quickPath.label}</span>`;
+            btn.style.cssText = `
+                padding: 0.5rem;
+                background: rgba(0, 150, 255, 0.1);
+                border: 1px solid rgba(0, 150, 255, 0.2);
+                border-radius: 4px;
+                color: var(--text-color);
+                cursor: pointer;
+                font-size: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.25rem;
+                transition: all 0.2s;
+            `;
+            btn.onmouseover = () => btn.style.background = 'rgba(0, 150, 255, 0.2)';
+            btn.onmouseout = () => btn.style.background = 'rgba(0, 150, 255, 0.1)';
+            btn.onclick = () => navigateToPath(quickPath.path);
+            DOM.quickPaths.appendChild(btn);
+        });
+    }
+
+    async function loadGamesAndApplications() {
+        try {
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            // Load games list
+            const gamesResponse = await fetch(`/api/applications?host=${host}&filter=game`);
+            const gamesData = await gamesResponse.json();
+
+            if (gamesData.success && gamesData.applications && gamesData.applications.length > 0) {
+                renderGameQuickLinks(gamesData.applications);
+            }
+
+            // Load applications list
+            const appsResponse = await fetch(`/api/applications?host=${host}&filter=app`);
+            const appsData = await appsResponse.json();
+
+            if (appsData.success && appsData.applications && appsData.applications.length > 0) {
+                renderAppQuickLinks(appsData.applications);
+            }
+        } catch (error) {
+            console.debug('Could not load games/applications for quick links:', error.message);
+            // This is not critical, so we don't show an error
+        }
+    }
+
+    function renderGameQuickLinks(games) {
+        const gameLinksContainer = document.getElementById('gameQuickLinks');
+        const gamesSection = document.getElementById('gamesSection');
+
+        if (!gameLinksContainer || games.length === 0) return;
+
+        gameLinksContainer.innerHTML = '';
+        games.forEach(game => {
+            const btn = document.createElement('button');
+            btn.className = 'game-quick-link';
+            btn.title = game.name || game.path;
+            
+            // Try to get a game icon if available
+            const icon = getGameIcon(game.guid);
+            btn.innerHTML = `<i class="fas ${icon}"></i><span>${game.name || 'Game'}</span>`;
+            
+            btn.style.cssText = `
+                padding: 0.5rem;
+                background: rgba(0, 150, 255, 0.1);
+                border: 1px solid rgba(0, 150, 255, 0.2);
+                border-radius: 4px;
+                color: var(--text-color);
+                cursor: pointer;
+                font-size: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.25rem;
+                transition: all 0.2s;
+            `;
+            btn.onmouseover = () => btn.style.background = 'rgba(0, 150, 255, 0.2)';
+            btn.onmouseout = () => btn.style.background = 'rgba(0, 150, 255, 0.1)';
+            
+            // Navigate to game directory
+            btn.onclick = () => {
+                if (game.path) {
+                    navigateToPath(game.path);
+                }
+            };
+            
+            gameLinksContainer.appendChild(btn);
+        });
+
+        gamesSection.style.display = 'block';
+    }
+
+    function renderAppQuickLinks(applications) {
+        const appLinksContainer = document.getElementById('appQuickLinks');
+        const appsSection = document.getElementById('applicationsSection');
+
+        if (!appLinksContainer || applications.length === 0) return;
+
+        appLinksContainer.innerHTML = '';
+        applications.forEach(app => {
+            const btn = document.createElement('button');
+            btn.className = 'app-quick-link';
+            btn.title = app.name || app.path;
+            
+            btn.innerHTML = `<i class="fas fa-box"></i><span>${app.name || 'App'}</span>`;
+            
+            btn.style.cssText = `
+                padding: 0.5rem;
+                background: rgba(100, 200, 255, 0.1);
+                border: 1px solid rgba(100, 200, 255, 0.2);
+                border-radius: 4px;
+                color: var(--text-color);
+                cursor: pointer;
+                font-size: 0.75rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.25rem;
+                transition: all 0.2s;
+            `;
+            btn.onmouseover = () => btn.style.background = 'rgba(100, 200, 255, 0.2)';
+            btn.onmouseout = () => btn.style.background = 'rgba(100, 200, 255, 0.1)';
+            
+            // Navigate to app directory
+            btn.onclick = () => {
+                if (app.path) {
+                    navigateToPath(app.path);
+                }
+            };
+            
+            appLinksContainer.appendChild(btn);
+        });
+
+        appsSection.style.display = 'block';
+    }
+
+    function getGameIcon(guid) {
+        // Map common game GUIDs to icons
+        const gameIcons = {
+            'ark': 'fa-dinosaur',
+            'minecraft': 'fa-cube',
+            'rust': 'fa-gamepad',
+            'csgo': 'fa-gun',
+            'valheim': 'fa-hammer',
+            'unreal': 'fa-cube'
+        };
+
+        if (guid) {
+            const guidLower = guid.toLowerCase();
+            for (const [key, icon] of Object.entries(gameIcons)) {
+                if (guidLower.includes(key)) {
+                    return icon;
+                }
+            }
+        }
+
+        return 'fa-gamepad'; // Default game icon
+    }
+
+    // ============================================================================
+    // FILE OPERATIONS
+    // ============================================================================
+
+    async function loadFiles(path) {
+        if (!DOM.fileList) return;
+
+        setState('currentPath', path);
+        DOM.currentPath.value = path;
+        document.getElementById('currentPathDisplay').textContent = path;
+
+        DOM.fileList.innerHTML = `
+            <div style="text-align: center; color: #666; padding: 2rem;">
+                <i class="fas fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+                <p>Loading files...</p>
+            </div>
+        `;
+
+        try {
+            // Get the host from the URL path (if this is a hosted files page)
+            // Otherwise use 'localhost' as default
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            const response = await fetch(`/api/files/${host}?path=${encodeURIComponent(path)}`);
+
+            const result = await response.json();
+
+            if (result.success) {
+                renderFileList(result.files || []);
+            } else {
+                showErrorState('Failed to load files: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error loading files:', error);
+            showErrorState('Error loading files: ' + error.message);
+        }
+    }
+
+    function renderFileList(files) {
+        if (!DOM.fileList) return;
+
+        if (files.length === 0) {
+            DOM.fileList.innerHTML = `
+                <div style="text-align: center; color: #666; padding: 2rem;">
+                    <i class="fas fa-folder-open" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+                    <p>This folder is empty</p>
+                </div>
+            `;
+            return;
+        }
+
+        DOM.fileList.innerHTML = '';
+
+        // Add type field based on file properties (directories have null size)
+        const filesWithType = files.map(f => ({
+            ...f,
+            type: f.size === null ? 'directory' : 'file'
+        }));
+
+        // Sort: directories first, then files
+        const sortedFiles = [
+            ...filesWithType.filter(f => f.type === 'directory'),
+            ...filesWithType.filter(f => f.type !== 'directory')
+        ];
+
+        sortedFiles.forEach(file => {
+            const fileItem = createFileItem(file);
+            DOM.fileList.appendChild(fileItem);
+        });
+    }
+
+    function createFileItem(file) {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.style.cssText = `
+            padding: 0.75rem;
+            border-bottom: 1px solid rgba(0, 150, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        `;
+
+        // Icon
+        const icon = document.createElement('i');
+        icon.className = file.type === 'directory' ? 'fas fa-folder' : getFileIcon(file.name);
+        icon.style.cssText = 'color: #0096ff; min-width: 20px;';
+
+        // Name and size
+        const info = document.createElement('div');
+        info.style.cssText = 'flex: 1; min-width: 0;';
+        const nameEl = document.createElement('div');
+        nameEl.textContent = file.name;
+        nameEl.style.cssText = 'font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+        info.appendChild(nameEl);
+
+        if (file.type !== 'directory') {
+            const sizeEl = document.createElement('div');
+            sizeEl.textContent = formatFileSize(file.size);
+            sizeEl.style.cssText = 'font-size: 0.85rem; opacity: 0.6; margin-top: 0.25rem;';
+            info.appendChild(sizeEl);
+        }
+
+        item.appendChild(icon);
+        item.appendChild(info);
+
+        // Event handlers
+        item.onmouseover = () => item.style.background = 'rgba(0, 150, 255, 0.05)';
+        item.onmouseout = () => item.style.background = 'transparent';
+        item.onclick = (e) => {
+            if (e.button === 0) { // Left click
+                if (file.type === 'directory') {
+                    navigateToPath(file.path);
+                } else {
+                    openFileModal(file);
+                }
+            }
+        };
+        item.oncontextmenu = (e) => {
+            e.preventDefault();
+            showFileContextMenu(e, file, file.type === 'directory');
+        };
+        item.ondblclick = () => {
+            if (file.type === 'directory') {
+                navigateToPath(file.path);
+            } else {
+                openFileModal(file);
+            }
+        };
+
+        return item;
+    }
+
+    function getFileIcon(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const iconMap = {
+            'js': 'fa-js', 'ts': 'fa-js', 'py': 'fa-python', 'sh': 'fa-terminal',
+            'json': 'fa-code', 'yaml': 'fa-code', 'yml': 'fa-code', 'xml': 'fa-code',
+            'txt': 'fa-file-lines', 'md': 'fa-markdown', 'pdf': 'fa-file-pdf',
+            'zip': 'fa-file-zipper', 'tar': 'fa-file-zipper', 'gz': 'fa-file-zipper',
+            'jpg': 'fa-image', 'png': 'fa-image', 'gif': 'fa-image', 'svg': 'fa-image'
+        };
+        return 'fas ' + (iconMap[ext] || 'fa-file');
+    }
+
+    function formatFileSize(bytes) {
+        if (!bytes) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024;
+            unitIndex++;
+        }
+        return Math.round(size * 100) / 100 + ' ' + units[unitIndex];
+    }
+
+    function navigateUp() {
+        const parts = AppState.currentPath.split('/').filter(p => p);
+        if (parts.length > 0) {
+            parts.pop();
+            const newPath = '/' + parts.join('/');
+            navigateToPath(newPath);
+        }
+    }
+
+    function navigateToPath(path) {
+        loadFiles(path);
+    }
+
+    function refreshFiles() {
+        loadFiles(AppState.currentPath);
+    }
+
+    function showErrorState(message) {
+        if (!DOM.fileList) return;
+        DOM.fileList.innerHTML = `
+            <div style="text-align: center; color: #ff6b6b; padding: 2rem;">
+                <i class="fas fa-exclamation-circle" style="font-size: 2rem; margin-bottom: 1rem; display: block;"></i>
+                <p>${message}</p>
+            </div>
+        `;
+    }
+
+    // ============================================================================
+    // MODAL MANAGEMENT
+    // ============================================================================
+
+    function openCreateFolderModal() {
+        document.getElementById('folderName').value = '';
+        document.getElementById('createFolderModal').classList.add('show');
+        document.getElementById('folderName').focus();
+    }
+
+    function closeCreateFolderModal() {
+        document.getElementById('createFolderModal').classList.remove('show');
+    }
+
+    function openCreateFileModal() {
+        document.getElementById('fileName').value = '';
+        document.getElementById('fileContent').value = '';
+        document.getElementById('createFileModal').classList.add('show');
+        document.getElementById('fileName').focus();
+    }
+
+    function closeCreateFileModal() {
+        document.getElementById('createFileModal').classList.remove('show');
+    }
+
+    function openFileModal(fileData) {
+        document.getElementById('fileEditorTitle').innerHTML = `<i class="fas fa-edit"></i> ${fileData.name}`;
+        setState('ui.editingFile', fileData.path);
+        document.getElementById('fileEditorModal').classList.add('show');
+        
+        // Load file content
+        loadFileContent(fileData);
+    }
+
+    function closeFileModal() {
+        document.getElementById('fileEditorModal').classList.remove('show');
+        setState('ui.editingFile', null);
+    }
+
+    function showDeleteModal(file, isDirectory) {
+        const modal = document.getElementById('deleteConfirmModal');
+        modal.querySelector('.filename').textContent = `${isDirectory ? 'Folder' : 'File'}: ${file.name}`;
+        setState('ui.selectedFile', file.path);
+        modal.classList.add('show');
+    }
+
+    function closeDeleteModal() {
+        document.getElementById('deleteConfirmModal').classList.remove('show');
+    }
+
+    function showRenameModal(file) {
+        document.getElementById('renameNewName').value = file.name;
+        setState('ui.selectedFile', file.path);
+        document.getElementById('renameModal').classList.add('show');
+        document.getElementById('renameNewName').select();
+    }
+
+    function closeRenameModal() {
+        document.getElementById('renameModal').classList.remove('show');
+    }
+
+    function closeUploadModal() {
+        document.getElementById('uploadModal').classList.remove('show');
+    }
+
+    function closeRestoreModal() {
+        document.getElementById('restoreConfirmModal').classList.remove('show');
+    }
+
+    function closeConfirmationModal() {
+        document.getElementById('confirmationModal').classList.remove('show');
+    }
+
+    function closeFileActionModal() {
+        document.getElementById('fileActionModal').classList.remove('show');
+    }
+
+    // ============================================================================
+    // FILE ACTIONS
+    // ============================================================================
+
+    async function loadFileContent(file) {
+        try {
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(file.path)}`);
+
+            const result = await response.json();
+
+            if (result.success) {
+                initializeCodeMirror(result.content, file.name, file.path);
+            } else {
+                showToast('error', 'Failed to load file: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error loading file:', error);
+            showToast('error', 'Error loading file: ' + error.message);
+        }
+    }
+
+    function initializeCodeMirror(content, filename, filePath) {
+        const container = document.getElementById('fileEditorContainer');
+        container.innerHTML = '';
+
+        const mode = getLanguageFromFilename(filename);
+        
+        AppState.config.fileEditor = CodeMirror(container, {
+            value: content,
+            mode: mode,
+            theme: 'material-darker',
+            lineNumbers: true,
+            lineWrapping: true,
+            indentUnit: 4,
+            indentWithTabs: false,
+            tabSize: 4,
+            readOnly: false
+        });
+
+        document.getElementById('fileEditorContainer').style.display = 'block';
+    }
+
+    function getLanguageFromFilename(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const modeMap = {
+            'js': 'javascript', 'ts': 'javascript', 'json': 'application/json',
+            'py': 'python', 'sh': 'application/x-sh', 'bash': 'application/x-sh',
+            'css': 'css', 'html': 'htmlmixed', 'xml': 'xml', 'yaml': 'yaml', 'yml': 'yaml'
+        };
+        return modeMap[ext] || 'null';
+    }
+
+    async function saveFileEdits() {
+        if (!AppState.config.fileEditor || !AppState.ui.editingFile) return;
+
+        setState('operations.fileOpInProgress', true);
+
+        try {
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            const content = AppState.config.fileEditor.getValue();
+            const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(AppState.ui.editingFile)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast('success', 'File saved successfully');
+                closeFileModal();
+                refreshFiles();
+            } else {
+                showToast('error', 'Failed to save file: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error saving file:', error);
+            showToast('error', 'Error saving file: ' + error.message);
+        } finally {
+            setState('operations.fileOpInProgress', false);
+        }
+    }
+
+    async function downloadCurrentFile() {
+        if (!AppState.ui.editingFile) return;
+        const urlPath = window.location.pathname;
+        const match = urlPath.match(/\/files\/([^/]+)/);
+        const host = match ? match[1] : 'localhost';
+        window.location.href = `/api/file/${host}?path=${encodeURIComponent(AppState.ui.editingFile)}&download=true`;
+    }
+
+    function downloadFile(path, name) {
+        const urlPath = window.location.pathname;
+        const match = urlPath.match(/\/files\/([^/]+)/);
+        const host = match ? match[1] : 'localhost';
+        window.location.href = `/api/file/${host}?path=${encodeURIComponent(path)}&download=true`;
+    }
+
+    function createNewFile() {
+        const name = document.getElementById('fileName').value.trim();
+        const content = document.getElementById('fileContent').value || '';
+
+        if (!name) {
+            showToast('error', 'Please enter a file name');
+            return;
+        }
+
+        const filePath = AppState.currentPath + '/' + name;
+        performCreateFile(filePath, content);
+    }
+
+    async function performCreateFile(filePath, content) {
+        setState('operations.fileOpInProgress', true);
+
+        try {
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(filePath)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast('success', 'File created successfully');
+                closeCreateFileModal();
+                refreshFiles();
+            } else {
+                showToast('error', 'Failed to create file: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error creating file:', error);
+            showToast('error', 'Error creating file: ' + error.message);
+        } finally {
+            setState('operations.fileOpInProgress', false);
+        }
+    }
+
+    function createNewFolder() {
+        const name = document.getElementById('folderName').value.trim();
+
+        if (!name) {
+            showToast('error', 'Please enter a folder name');
+            return;
+        }
+
+        const folderPath = AppState.currentPath + '/' + name;
+        performCreateFolder(folderPath);
+    }
+
+    async function performCreateFolder(folderPath) {
+        setState('operations.fileOpInProgress', true);
+
+        try {
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(folderPath)}&isdir=true`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast('success', 'Folder created successfully');
+                closeCreateFolderModal();
+                refreshFiles();
+            } else {
+                showToast('error', 'Failed to create folder: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error creating folder:', error);
+            showToast('error', 'Error creating folder: ' + error.message);
+        } finally {
+            setState('operations.fileOpInProgress', false);
+        }
+    }
+
+    async function executeDeleteFile() {
+        const filePath = AppState.ui.selectedFile;
+        if (!filePath) return;
+
+        setState('operations.fileOpInProgress', true);
+
+        try {
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(filePath)}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast('success', 'File deleted successfully');
+                closeDeleteModal();
+                refreshFiles();
+            } else {
+                showToast('error', 'Failed to delete file: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error deleting file:', error);
+            showToast('error', 'Error deleting file: ' + error.message);
+        } finally {
+            setState('operations.fileOpInProgress', false);
+        }
+    }
+
+    async function executeRename() {
+        const newName = document.getElementById('renameNewName').value.trim();
+        const oldPath = AppState.ui.selectedFile;
+
+        if (!newName) {
+            showToast('error', 'Please enter a new name');
+            return;
+        }
+
+        const newPath = oldPath.substring(0, oldPath.lastIndexOf('/')) + '/' + newName;
+
+        setState('operations.fileOpInProgress', true);
+
+        try {
+            const urlPath = window.location.pathname;
+            const match = urlPath.match(/\/files\/([^/]+)/);
+            const host = match ? match[1] : 'localhost';
+
+            const response = await fetch(`/api/file/${host}/rename`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: oldPath, newPath })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast('success', 'File renamed successfully');
+                closeRenameModal();
+                refreshFiles();
+            } else {
+                showToast('error', 'Failed to rename file: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error renaming file:', error);
+            showToast('error', 'Error renaming file: ' + error.message);
+        } finally {
+            setState('operations.fileOpInProgress', false);
+        }
+    }
+
+    async function startUpload() {
+        const files = document.getElementById('fileInput').files;
+        if (files.length === 0) {
+            showToast('error', 'No files selected');
+            return;
+        }
+
+        setState('operations.uploadInProgress', true);
+
+        const urlPath = window.location.pathname;
+        const match = urlPath.match(/\/files\/([^/]+)/);
+        const host = match ? match[1] : 'localhost';
+
+        // Upload each file to the current path
+        for (let file of files) {
+            const filePath = AppState.currentPath.endsWith('/') 
+                ? AppState.currentPath + file.name 
+                : AppState.currentPath + '/' + file.name;
+
+            try {
+                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(filePath)}`, {
+                    method: 'PUT',
+                    body: file
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    showToast('error', `Failed to upload ${file.name}: ${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                showToast('error', `Error uploading ${file.name}: ${error.message}`);
+            }
+        }
+
+        setState('operations.uploadInProgress', false);
+        showToast('success', 'Files uploaded successfully');
+        closeUploadModal();
+        refreshFiles();
+        document.getElementById('fileInput').value = '';
+    }
+
+    async function handleFileOpen(file) {
+        if (file.type === 'directory') {
+            navigateToPath(file.path);
+        } else {
+            openFileModal(file);
+        }
+    }
+
+    // ============================================================================
+    // EVENT LISTENERS & UI
+    // ============================================================================
+
+    function attachEventListeners() {
+        // Upload button
+        const uploadBtn = document.getElementById('uploadBtn');
+        if (uploadBtn) {
+            uploadBtn.addEventListener('click', () => {
+                document.getElementById('fileInput').click();
+            });
+        }
+
+        document.getElementById('fileInput')?.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                document.getElementById('uploadModal').classList.add('show');
+            }
+        });
+
+        // File context menu
+        document.getElementById('contextEdit')?.addEventListener('click', () => {
+            if (AppState.ui.selectedFile) {
+                const files = DOM.fileList.querySelectorAll('.file-item');
+                files.forEach(item => {
+                    if (item.dataset.path === AppState.ui.selectedFile) {
+                        openFileModal({ path: AppState.ui.selectedFile, name: item.dataset.name });
+                    }
+                });
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextDownload')?.addEventListener('click', () => {
+            if (AppState.ui.selectedFile) {
+                downloadFile(AppState.ui.selectedFile, AppState.ui.selectedFile.split('/').pop());
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextDelete')?.addEventListener('click', () => {
+            if (AppState.ui.selectedFile) {
+                showDeleteModal({ name: AppState.ui.selectedFile.split('/').pop(), path: AppState.ui.selectedFile }, false);
+            }
+            hideFileContextMenu();
+        });
+
+        document.getElementById('contextRename')?.addEventListener('click', () => {
+            if (AppState.ui.selectedFile) {
+                showRenameModal({ name: AppState.ui.selectedFile.split('/').pop(), path: AppState.ui.selectedFile });
+            }
+            hideFileContextMenu();
+        });
+
+        // Dropdown toggle is handled by onclick attribute in the HTML
+
+        // Hide dropdown when clicking elsewhere
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('createDropdown');
+            if (dropdown && !e.target.closest('.dropdown-container')) {
+                dropdown.style.display = 'none';
+            }
+        });
+
+        // Create modals handlers
+        document.getElementById('confirmCreateFolder')?.addEventListener('click', createNewFolder);
+        document.getElementById('confirmCreateFile')?.addEventListener('click', createNewFile);
+        document.getElementById('confirmUpload')?.addEventListener('click', startUpload);
+
+        // Enter key in modals
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                if (document.getElementById('createFolderModal').classList.contains('show')) {
+                    createNewFolder();
+                } else if (document.getElementById('createFileModal').classList.contains('show')) {
+                    createNewFile();
+                }
+            }
+        });
+    }
+
+    function toggleCreateDropdown() {
+        const dropdown = document.getElementById('createDropdown');
+        if (dropdown.style.display === 'none' || dropdown.style.display === '') {
+            dropdown.style.display = 'block';
+        } else {
+            dropdown.style.display = 'none';
+        }
+    }
+
+    function openNewFileModal() {
+        document.getElementById('fileName').value = '';
+        document.getElementById('fileContent').value = '';
+        document.getElementById('createFileModal').classList.add('show');
+        document.getElementById('createDropdown').style.display = 'none';
+        document.getElementById('fileName').focus();
+    }
+
+    function openNewFolderModal() {
+        document.getElementById('folderName').value = '';
+        document.getElementById('createFolderModal').classList.add('show');
+        document.getElementById('createDropdown').style.display = 'none';
+        document.getElementById('folderName').focus();
+    }
+
+    function showFileContextMenu(e, file, isDirectory) {
+        const menu = document.getElementById('fileContextMenu');
+        setState('ui.selectedFile', file.path);
+        
+        menu.style.display = 'block';
+        menu.style.left = e.pageX + 'px';
+        menu.style.top = e.pageY + 'px';
+    }
+
+    function hideFileContextMenu() {
+        document.getElementById('fileContextMenu').style.display = 'none';
+    }
+
+    // Hide context menu on click outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#fileContextMenu')) {
+            hideFileContextMenu();
+        }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', hideFileContextMenu);
+
+    // Modal close buttons
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const modal = e.target.closest('.modal');
+            if (modal) {
+                modal.classList.remove('show');
+            }
+        });
+    });
+
+    // Modal overlays
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            const modal = e.target.closest('.modal');
+            if (modal) {
+                modal.classList.remove('show');
+            }
+        });
+    });
+</script>
 </body>
 </html>

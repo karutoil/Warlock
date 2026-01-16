@@ -202,8 +202,8 @@ function renderCardsView(servers) {
                         <div class="server-stat">
                             <span class="server-stat-label">Resources</span>
                             <span class="server-stat-value">
-                                <i class="fas fa-microchip"></i> ${cpuUsage}% | 
-                                <i class="fas fa-memory"></i> ${memoryUsage}MB
+                                <i class="fas fa-microchip"></i> ${cpuUsage} | 
+                                <i class="fas fa-memory"></i> ${memoryUsage}
                             </span>
                         </div>
                     </div>
