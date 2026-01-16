@@ -103,6 +103,7 @@ with each instance being configurable and manageable separately.
 ## Games Supported
 
 * [ARK Survival Ascended](https://github.com/cdp1337/ARKSurvivalAscended-Linux)
+* [Hytale](https://github.com/BitsNBytes25/Hytale-Installer)
 * [Minecraft](https://github.com/BitsNBytes25/Minecraft-Installer)
 * [Palworld](https://github.com/BitsNBytes25/Palworld-Installer)
 * [Project Zomboid](https://github.com/BitsNBytes25/Zomboid-Installer)
