@@ -1,0 +1,17 @@
+{
+  "name": "warlock-agent",
+  "version": "1.0.0",
+  "description": "Warlock Panel WebSocket Agent for remote server management",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "install-service": "node install-service.js"
+  },
+  "keywords": ["warlock", "agent", "websocket", "server-management"],
+  "author": "Warlock",
+  "license": "MIT",
+  "dependencies": {
+    "socket.io-client": "^4.7.2",
+    "systeminformation": "^5.21.20"
+  }
+}

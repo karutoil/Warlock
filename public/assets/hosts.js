@@ -157,6 +157,44 @@ function renderHost(host, hostData) {
 
 	// --- Action Buttons ---
 	
+	// Agent Status Indicator (if available)
+	if (typeof WarlockSocket !== 'undefined') {
+		const agentStatus = document.createElement('div');
+		agentStatus.className = 'host-agent-status';
+		agentStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Checking agent...';
+		agentStatus.style.cssText = 'padding: 0.5rem; margin-bottom: 0.5rem; font-size: 0.85rem; border-radius: 4px; text-align: center;';
+		
+		// Check agent status via API
+		fetch(`/api/agents/${encodeURIComponent(host)}`)
+			.then(r => r.json())
+			.then(data => {
+				if (data.success) {
+					if (data.connected) {
+						agentStatus.className = 'host-agent-status connected';
+						agentStatus.innerHTML = '<i class="fas fa-check-circle"></i> Agent Connected';
+						agentStatus.style.backgroundColor = 'rgba(76, 175, 80, 0.2)';
+						agentStatus.style.color = '#4CAF50';
+					} else if (data.installed) {
+						agentStatus.className = 'host-agent-status installed';
+						agentStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Agent Offline';
+						agentStatus.style.backgroundColor = 'rgba(255, 193, 7, 0.2)';
+						agentStatus.style.color = '#FFC107';
+					} else {
+						agentStatus.className = 'host-agent-status not-installed';
+						agentStatus.innerHTML = '<i class="fas fa-times-circle"></i> Agent Not Installed';
+						agentStatus.style.backgroundColor = 'rgba(244, 67, 54, 0.2)';
+						agentStatus.style.color = '#F44336';
+					}
+				}
+			})
+			.catch(err => {
+				agentStatus.innerHTML = '<i class="fas fa-question-circle"></i> Status Unknown';
+				agentStatus.style.backgroundColor = 'rgba(128, 128, 128, 0.2)';
+			});
+		
+		cardBody.insertBefore(agentStatus, actionsContainer);
+	}
+	
 	// Files Button
 	const filesBtn = document.createElement('button');
 	filesBtn.className = 'host-action-btn link-control';

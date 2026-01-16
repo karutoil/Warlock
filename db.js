@@ -107,10 +107,51 @@ const Metric = sequelize.define('Metric', {
 	timestamps: false
 });
 
+// AgentConnection model for tracking WebSocket agent connections
+const AgentConnection = sequelize.define('AgentConnection', {
+	host_ip: {
+		type: DataTypes.STRING,
+		allowNull: false,
+		unique: true
+	},
+	socket_id: {
+		type: DataTypes.STRING,
+		allowNull: true
+	},
+	agent_token: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	agent_version: {
+		type: DataTypes.STRING,
+		allowNull: true
+	},
+	connected_at: {
+		type: DataTypes.INTEGER,
+		allowNull: true
+	},
+	last_ping: {
+		type: DataTypes.INTEGER,
+		allowNull: true
+	},
+	status: {
+		type: DataTypes.STRING,
+		allowNull: false,
+		defaultValue: 'disconnected' // 'connected', 'disconnected', 'error'
+	}
+}, {
+	indexes: [
+		{ fields: ['host_ip'] },
+		{ fields: ['status'] }
+	],
+	timestamps: true
+});
+
 module.exports = {
 	sequelize,
 	User,
 	Host,
 	Meta,
-	Metric
+	Metric,
+	AgentConnection
 };

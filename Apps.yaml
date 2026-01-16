@@ -138,3 +138,23 @@
   image: media/vein-1280x720.jpg
   icon: media/vein-128x128.png
   thumbnail: media/vein_616x353.jpg
+- guid: 00000000-0000-0000-0000-000000000001
+  title: Warlock Agent
+  source: internal
+  repo: BitsNBytes25/Warlock
+  installer: agent/install.sh
+  author: Warlock Team
+  category: System Management
+  supports:
+    - "Debian 12, 13"
+    - "Ubuntu 24.04"
+    - "RHEL 8, 9"
+    - "Rocky Linux 8, 9"
+    - "AlmaLinux 8, 9"
+    - "Arch Linux"
+  syntax:
+    - "--panel-url=<url> - Panel WebSocket URL (required)"
+    - "--token=<str> - Authentication token (required)"
+  image: media/warlock-agent.png
+  icon: media/warlock-icon.png
+  thumbnail: media/warlock-thumb.png
