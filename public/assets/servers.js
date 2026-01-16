@@ -175,8 +175,7 @@ function renderCardsView(servers) {
 
         htmlParts[i] = `
             <div class="server-card" data-guid="${app_guid}" data-host="${host}" data-service="${service}">
-                <div class="server-card-header">
-                    ${appIcon}
+                <div class="server-card-header" style="background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('${thumbnailUrl ? escapeHtml(thumbnailUrl) : ''}'); background-size: cover; background-position: center;">
                     <div class="server-card-title">
                         <h3>${service}</h3>
                         <p>${renderHostName(host)}</p>
@@ -536,7 +535,7 @@ function renderView() {
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
-    // Load application data for thumbnails
+    // Load application data for icons (needed for renderAppIcon function)
     fetchApplications().catch(e => console.error('Failed to fetch applications:', e));
 
     // Initial load
