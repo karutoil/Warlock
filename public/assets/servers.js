@@ -550,8 +550,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Listen for action state changes from other pages/tabs
     onSharedActionStateChange((newState, oldState) => {
+        console.log('[servers.js] onSharedActionStateChange callback fired:', newState, oldState);
         if (newState) {
             // Action started on another page
+            console.log('[servers.js] Setting action in progress for:', newState);
             setState('actions.inProgress', true);
             setState('actions.server', {
                 guid: newState.guid,
@@ -563,6 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderView();
         } else if (oldState && !newState) {
             // Action completed on another page
+            console.log('[servers.js] Clearing action, was:', oldState);
             setState('actions.inProgress', false);
             setState('actions.server', null);
             setState('actions.action', null);
