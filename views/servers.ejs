@@ -10,6 +10,11 @@
     <link rel="stylesheet" href="/assets/themes.css">
     <script src="/assets/common.js"></script>
     <style>
+        .main-container.servers-view {
+            grid-template-columns: 1fr;
+            max-width: 1600px;
+        }
+
         .servers-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
@@ -219,7 +224,7 @@
 <body>
     <%- include('partials/nav.ejs') %>
 
-    <div class="main-container" style="grid-template-columns: 1fr; max-width: 1600px;">
+    <div class="main-container servers-view">
         <main class="content-area">
             <div class="content-header">
                 <div class="content-header-inner">
@@ -307,6 +312,7 @@
     </div>
 
     <%- include('partials/theme-selector.ejs') %>
+    <script src="/assets/servers-config.js"></script>
     <script src="/assets/servers.js"></script>
 </body>
 </html>
