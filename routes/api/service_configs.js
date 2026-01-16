@@ -10,13 +10,29 @@ const router = express.Router();
  * Get the configuration values and settings for a given service
  */
 router.get('/:guid/:host/:service', validate_session, (req, res) => {
-	validateHostService(req.params.host, req.params.guid, req.params.service)
+	const host = req.params.host,
+		guid = req.params.guid,
+		service = req.params.service,
+		cacheKey = `service_configs_${guid}_${host}_${service}`;
+
+	validateHostService(host, guid, service)
 		.then(dat => {
+			const cached = cache.default.get(cacheKey);
+			if (cached !== undefined) {
+				return res.json({
+					success: true,
+					configs: cached,
+					cached: true
+				});
+			}
+
 			cmdRunner(dat.host.host, `${dat.host.path}/manage.py --service ${dat.service.service} --get-configs`)
 				.then(result => {
+					const configs = JSON.parse(result.stdout);
+					cache.default.set(cacheKey, configs, 30);
 					return res.json({
 						success: true,
-						configs: JSON.parse(result.stdout)
+						configs
 					});
 				})
 				.catch(e => {
@@ -39,7 +55,8 @@ router.get('/:guid/:host/:service', validate_session, (req, res) => {
 router.post('/:guid/:host/:service', async (req, res) => {
 	const host = req.params.host,
 		guid = req.params.guid,
-		service = req.params.service;
+		service = req.params.service,
+		cacheKey = `service_configs_${guid}_${host}_${service}`;
 
 	validateHostService(host, guid, service)
 		.then(dat => {
@@ -56,6 +73,7 @@ router.post('/:guid/:host/:service', async (req, res) => {
 
 					// Clear the cache data for this service, useful for keys like name or port.
 					cache.default.set(`services_${guid}_${host}`, null, 1); // Invalidate cache
+					cache.default.set(cacheKey, null, 1);
 
 					return res.json({
 						success: true,

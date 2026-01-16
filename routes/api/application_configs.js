@@ -2,6 +2,7 @@ const express = require('express');
 const {validate_session} = require("../../libs/validate_session.mjs");
 const {cmdRunner} = require("../../libs/cmd_runner.mjs");
 const {validateHostApplication} = require("../../libs/validate_host_application.mjs");
+const cache = require("../../libs/cache.mjs");
 
 const router = express.Router();
 
@@ -9,13 +10,28 @@ const router = express.Router();
  * Get the configuration values and settings for a given application
  */
 router.get('/:guid/:host', validate_session, (req, res) => {
-	validateHostApplication(req.params.host, req.params.guid)
+	const host = req.params.host,
+		guid = req.params.guid,
+		cacheKey = `app_configs_${guid}_${host}`;
+
+	validateHostApplication(host, guid)
 		.then(dat => {
+			const cached = cache.default.get(cacheKey);
+			if (cached !== undefined) {
+				return res.json({
+					success: true,
+					configs: cached,
+					cached: true
+				});
+			}
+
 			cmdRunner(dat.host.host, `${dat.host.path}/manage.py --get-configs`)
 				.then(result => {
+					const configs = JSON.parse(result.stdout);
+					cache.default.set(cacheKey, configs, 30);
 					return res.json({
 						success: true,
-						configs: JSON.parse(result.stdout)
+						configs
 					});
 				})
 				.catch(e => {
@@ -36,7 +52,11 @@ router.get('/:guid/:host', validate_session, (req, res) => {
 });
 
 router.post('/:guid/:host', async (req, res) => {
-	validateHostApplication(req.params.host, req.params.guid)
+	const host = req.params.host,
+		guid = req.params.guid,
+		cacheKey = `app_configs_${guid}_${host}`;
+
+	validateHostApplication(host, guid)
 		.then(dat => {
 			const configUpdates = req.body;
 			const updatePromises = [];
@@ -48,6 +68,7 @@ router.post('/:guid/:host', async (req, res) => {
 			}
 			Promise.all(updatePromises)
 				.then(result => {
+					cache.default.set(cacheKey, null, 1);
 					return res.json({
 						success: true,
 					});

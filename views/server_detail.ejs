@@ -18,11 +18,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/css/css.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.3.0/luxon.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-luxon/1.3.1/chartjs-adapter-luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <script src="/assets/common.js"></script>
+    <script src="/assets/common.js" defer></script>
+    <script src="/assets/shared-action-state.js" defer></script>
 </head>
 <body>
     <%- include('partials/nav.ejs') %>
@@ -919,22 +919,283 @@
 
     <%- include('partials/theme-selector.ejs') %>
     <script>
+        // ============================================================================
+        // STATE MANAGEMENT SYSTEM
+        // ============================================================================
+        // Centralized state management for all application state to prevent:
+        // - Race conditions between polling intervals
+        // - Duplicate state updates
+        // - Inconsistent state across components
+        // - Scattered variable declarations
+        // ============================================================================
+
+        // Extract route parameters from URL
         const urlParams = new URLSearchParams(window.location.pathname.split('/server/')[1]);
         const pathParts = window.location.pathname.split('/');
-        const guid = pathParts[2];
-        const host = pathParts[3];
-        const service = pathParts[4];
 
-        let serverData = null,
-            charts = {},
-            currentPath = '/',
-            currentFilePath = null;
+        /**
+         * Core application state object
+         * All state mutations must go through setState() for consistency tracking
+         */
+        const AppState = {
+            // Route identifiers (read-only)
+            route: Object.freeze({
+                guid: pathParts[2],
+                host: pathParts[3],
+                service: pathParts[4]
+            }),
+
+            // Server data from API
+            server: {
+                data: null,
+                lastUpdated: null,
+                isStale: false
+            },
+
+            // UI operation flags - prevent overlapping operations
+            operations: {
+                actionInProgress: false,      // Service control (start/stop/restart)
+                fileOpInProgress: false,       // File operations (rename, delete, etc)
+                autoBootUpdating: false,       // Auto-boot toggle
+                consoleStreaming: false,       // Console stream active
+                configuring: false,            // Config change in progress
+                backingUp: false,              // Backup operation in progress
+                restoring: false,              // Restore operation in progress
+                updating: false                // Update operation in progress
+            },
+
+            // Polling intervals
+            intervals: {
+                serverData: null,              // 30s normal, 5s during toggle
+                fileRefresh: null,             // File browser refresh
+                console: null,                 // Console stream
+                logs: null                     // Logs stream
+            },
+
+            // Stream references for cleanup
+            streams: {
+                console: null,
+                logs: null
+            },
+
+            // UI state
+            ui: {
+                currentFilePath: '/',          // File browser path
+                editingFile: null,             // Currently edited file path
+                compressedFile: null,          // Compressed file being handled
+                metricsTimeframe: 'hour',      // Metrics view period ('live', 'hour', 'day')
+                activeTab: null,               // Currently active tab
+                // Logs viewing state
+                logsMode: 'live',              // Logs display mode ('live', 'h', 'd', 'custom')
+                logsOffset: 1,                 // Offset for hour/day modes
+                logsCustomStart: null,         // Custom date range start
+                logsCustomEnd: null            // Custom date range end
+            },
+
+            // Configuration and options
+            config: {
+                applicationOptions: [],        // Service options
+                backupPath: null,              // Current backup directory
+                charts: {},                    // Chart.js instances
+                fileEditor: null,              // CodeMirror editor instance
+                consoleLineCount: 0,           // For console output tracking
+                serviceRunning: false          // Whether service is currently running
+            },
+
+            // Debug/logging
+            debug: {
+                stateChanges: [],              // Track recent state changes
+                lastError: null,
+                enableLogging: false           // Set true for verbose logging
+            }
+        };
+
+        /**
+         * Immutable getter for route parameters
+         */
+        const getRouteParams = () => ({
+            guid: AppState.route.guid,
+            host: AppState.route.host,
+            service: AppState.route.service
+        });
+
+        /**
+         * Type-safe state setter with change tracking
+         * All state mutations MUST use this function
+         */
+        function setState(path, value) {
+            const setNested = (obj, pathStr, val) => {
+                const keys = pathStr.split('.');
+                let current = obj;
+                
+                for (let i = 0; i < keys.length - 1; i++) {
+                    const key = keys[i];
+                    if (!(key in current)) {
+                        current[key] = {};
+                    }
+                    current = current[key];
+                }
+                
+                const lastKey = keys[keys.length - 1];
+                const oldValue = current[lastKey];
+                current[lastKey] = val;
+
+                // Track state changes for debugging
+                if (AppState.debug.enableLogging) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    const change = `[${timestamp}] ${path}: ${JSON.stringify(oldValue)} → ${JSON.stringify(val)}`;
+                    AppState.debug.stateChanges.push(change);
+                    console.log('[STATE]', change);
+                }
+
+                return oldValue !== val;
+            };
+
+            return setNested(AppState, path, value);
+        }
+
+        /**
+         * Safe getter for nested state properties
+         */
+        function getState(path) {
+            const keys = path.split('.');
+            let current = AppState;
+            
+            for (const key of keys) {
+                if (current === null || current === undefined) {
+                    console.warn(`[STATE] Accessing undefined path: ${path}`);
+                    return undefined;
+                }
+                current = current[key];
+            }
+            
+            return current;
+        }
+
+        /**
+         * Validate state consistency and detect issues
+         * Useful for debugging and preventing race conditions
+         */
+        function validateState() {
+            const errors = [];
+            const warnings = [];
+
+            // Check operation states
+            const activeOps = Object.entries(AppState.operations)
+                .filter(([_, v]) => v === true)
+                .map(([k, _]) => k);
+            
+            if (activeOps.length > 1) {
+                warnings.push(`Multiple operations in progress: ${activeOps.join(', ')}`);
+            }
+
+            // Check intervals
+            const activeIntervals = Object.entries(AppState.intervals)
+                .filter(([_, v]) => v !== null)
+                .map(([k, _]) => k);
+            
+            if (AppState.operations.actionInProgress && activeIntervals.includes('serverData')) {
+                warnings.push('Server data interval active during action - should be handling polling in executeAction');
+            }
+
+            // Check stream state consistency
+            if (AppState.operations.consoleStreaming && !AppState.streams.console) {
+                errors.push('Console marked as streaming but no stream object exists');
+            }
+            if (!AppState.operations.consoleStreaming && AppState.streams.console) {
+                warnings.push('Console stream exists but not marked as streaming');
+            }
+
+            // Check UI state
+            if (AppState.ui.editingFile && !AppState.ui.editingFile.includes('/')) {
+                warnings.push('Invalid editing file path: ' + AppState.ui.editingFile);
+            }
+
+            return { errors, warnings, isValid: errors.length === 0 };
+        }
+
+        /**
+         * Enable verbose state logging for debugging
+         */
+        function enableStateLogging(enabled = true) {
+            setState('debug.enableLogging', enabled);
+            if (enabled) {
+                console.log('[STATE] Logging enabled - all state changes will be logged');
+            }
+        }
+
+        /**
+         * Get state change history
+         */
+        function getStateHistory(limit = 20) {
+            const history = AppState.debug.stateChanges;
+            return history.slice(-limit);
+        }
+
+        /**
+         * Clear state change history
+         */
+        function clearStateHistory() {
+            setState('debug.stateChanges', []);
+        }
+
+        /**
+         * Check if any operation is currently in progress
+         */
+        function isOperationInProgress() {
+            const ops = AppState.operations;
+            return ops.actionInProgress || 
+                   ops.fileOpInProgress || 
+                   ops.autoBootUpdating || 
+                   ops.configuring ||
+                   ops.backingUp ||
+                   ops.restoring ||
+                   ops.updating;
+        }
+
+        /**
+         * Cleanup all intervals and streams
+         */
+        function cleanupState() {
+            // Clear all intervals
+            ['serverData', 'fileRefresh', 'console', 'logs'].forEach(key => {
+                const interval = AppState.intervals[key];
+                if (interval) {
+                    clearInterval(interval);
+                    setState(`intervals.${key}`, null);
+                }
+            });
+
+            // Cleanup streams
+            if (AppState.streams.console) {
+                AppState.streams.console.abort?.();
+                setState('streams.console', null);
+            }
+            if (AppState.streams.logs) {
+                AppState.streams.logs.abort?.();
+                setState('streams.logs', null);
+            }
+
+            // Cleanup charts
+            Object.values(AppState.config.charts).forEach(chart => {
+                if (chart && chart.destroy) {
+                    chart.destroy();
+                }
+            });
+            setState('config.charts', {});
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', cleanupState);
+
+        // Convenience destructuring for route parameters
+        const { guid, host, service } = getRouteParams();
 
         // Load server data
         async function loadServerData() {
-            // Don't update if an action is in progress
-            if (isActionInProgress) {
-                console.log('Skipping periodic update - action in progress');
+            // Don't update if an operation is in progress to prevent state conflicts
+            if (isOperationInProgress()) {
+                console.log('[STATE] Skipping periodic update - operation in progress');
                 return;
             }
             
@@ -943,16 +1204,37 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    serverData = result;
+                    setState('server.data', result);
+                    setState('server.lastUpdated', new Date());
+                    setState('server.isStale', false);
+                    setState('config.applicationOptions', result.host?.options || []);
+                    
                     updateServerHeader(result);
                     updateServerStats(result.service);
-                    
-                    // Load application options for settings
-                    applicationOptions = result.host?.options || [];
+                    updateAutoBootUI(result.service?.enabled);
                 }
             } catch (error) {
                 console.error('Error loading server data:', error);
+                setState('server.isStale', true);
+                setState('debug.lastError', error.message);
                 showToast('error', 'Failed to load server data');
+            }
+        }
+
+        function startServerDataRefresh(interval = 30000) {
+            // Clear existing interval to prevent duplicates
+            if (AppState.intervals.serverData) {
+                clearInterval(AppState.intervals.serverData);
+            }
+            // Start new interval with specified timing
+            const newInterval = setInterval(loadServerData, interval);
+            setState('intervals.serverData', newInterval);
+        }
+
+        function stopServerDataRefresh() {
+            if (AppState.intervals.serverData) {
+                clearInterval(AppState.intervals.serverData);
+                setState('intervals.serverData', null);
             }
         }
 
@@ -1028,12 +1310,12 @@
                 // Load tab-specific data
                 if (btn.dataset.tab === 'console') {
                     // Auto-start console stream when switching to console tab
-                    if (!isConsoleStreaming) {
+                    if (!AppState.operations.consoleStreaming) {
                         startConsoleStream();
                     }
                 } else {
                     // Stop console stream when switching away from console tab
-                    if (isConsoleStreaming) {
+                    if (AppState.operations.consoleStreaming) {
                         stopConsoleStream();
                     }
                     
@@ -1041,7 +1323,7 @@
                         loadMetrics();
                         startMetricsAutoRefresh();
                     } else if (btn.dataset.tab === 'files') {
-                        loadFiles(currentPath);
+                        loadFiles(AppState.ui.currentFilePath);
                     } else if (btn.dataset.tab === 'backups') {
                         loadBackupsList();
                         loadAutomaticBackupConfig();
@@ -1053,9 +1335,9 @@
                         loadSettings();
                     } else {
                         // Stop logs stream when switching away from logs tab
-                        if (logsStreamRequest) {
-                            logsStreamRequest.cancel();
-                            logsStreamRequest = null;
+                        if (AppState.streams.logs) {
+                            AppState.streams.logs.cancel();
+                            setState('streams.logs', null);
                         }
                     }
 
@@ -1068,11 +1350,6 @@
         });
 
         // Logs tab functionality
-        let logsMode = 'live';
-        let logsOffset = 1;
-        let logsStreamRequest = null;
-        let logsCustomStart = null;
-        let logsCustomEnd = null;
         let logsFilterText = '';
         // Client-side rate limit to prevent spamming mode switches
         let logsLastRequestAt = 0;
@@ -1141,15 +1418,15 @@
             
             logsContainer.innerHTML = '';
 
-            if (logsMode === 'live') {
+            if (AppState.ui.logsMode === 'live') {
                 // Stop existing stream if any
-                if (logsStreamRequest) {
-                    logsStreamRequest.cancel();
-                    logsStreamRequest = null;
+                if (AppState.streams.logs) {
+                    AppState.streams.logs.cancel();
+                    setState('streams.logs', null);
                 }
                 
                 // Start live stream
-                logsStreamRequest = stream(
+                setState('streams.logs', stream(
                     `/api/service/logs/${guid}/${host}/${service}`,
                     'GET',
                     {},
@@ -1161,23 +1438,23 @@
                             filterLogs();
                         }
                     }
-                );
+                ));
             } else {
                 // Stop stream if switching from live mode
-                if (logsStreamRequest) {
-                    logsStreamRequest.cancel();
-                    logsStreamRequest = null;
+                if (AppState.streams.logs) {
+                    AppState.streams.logs.cancel();
+                    setState('streams.logs', null);
                 }
 
                 // Render header message
                 let headerMessage = '';
-                if (logsMode === 'h') {
-                    headerMessage = logsOffset === 1 ? 'Logs for the past hour' : `Hourly logs from ${logsOffset} hours ago`;
-                } else if (logsMode === 'd') {
-                    headerMessage = logsOffset === 1 ? 'Logs for the past day' : `Daily logs from ${logsOffset} days ago`;
-                } else if (logsMode === 'custom') {
-                    const start = new Date(logsCustomStart).toLocaleString();
-                    const end = new Date(logsCustomEnd).toLocaleString();
+                if (AppState.ui.logsMode === 'h') {
+                    headerMessage = AppState.ui.logsOffset === 1 ? 'Logs for the past hour' : `Hourly logs from ${AppState.ui.logsOffset} hours ago`;
+                } else if (AppState.ui.logsMode === 'd') {
+                    headerMessage = AppState.ui.logsOffset === 1 ? 'Logs for the past day' : `Daily logs from ${AppState.ui.logsOffset} days ago`;
+                } else if (AppState.ui.logsMode === 'custom') {
+                    const start = new Date(AppState.ui.logsCustomStart).toLocaleString();
+                    const end = new Date(AppState.ui.logsCustomEnd).toLocaleString();
                     headerMessage = `Custom logs from ${start} to ${end}`;
                 }
 
@@ -1188,9 +1465,9 @@
                 logsContainer.appendChild(headerEntry);
 
                 // Fetch historical logs
-                let url = `/api/service/logs/${guid}/${host}/${service}?mode=${logsMode}&offset=${logsOffset}`;
-                if (logsMode === 'custom' && logsCustomStart && logsCustomEnd) {
-                    url = `/api/service/logs/${guid}/${host}/${service}?mode=custom&start=${encodeURIComponent(logsCustomStart)}&end=${encodeURIComponent(logsCustomEnd)}`;
+                let url = `/api/service/logs/${guid}/${host}/${service}?mode=${AppState.ui.logsMode}&offset=${AppState.ui.logsOffset}`;
+                if (AppState.ui.logsMode === 'custom' && AppState.ui.logsCustomStart && AppState.ui.logsCustomEnd) {
+                    url = `/api/service/logs/${guid}/${host}/${service}?mode=custom&start=${encodeURIComponent(AppState.ui.logsCustomStart)}&end=${encodeURIComponent(AppState.ui.logsCustomEnd)}`;
                 }
                 fetch(url)
                     .then(async response => {
@@ -1292,9 +1569,9 @@
             }
             logsLastRequestAt = now;
 
-            if (logsMode !== 'live') {
-                logsMode = 'live';
-                logsOffset = 1;
+            if (AppState.ui.logsMode !== 'live') {
+                setState('ui.logsMode', 'live');
+                setState('ui.logsOffset', 1);
                 
                 // Update button states
                 document.getElementById('logs-mode-live').classList.add('active');
@@ -1322,9 +1599,9 @@
             }
             logsLastRequestAt = now;
 
-            if (logsMode !== 'h') {
-                logsMode = 'h';
-                logsOffset = 1;
+            if (AppState.ui.logsMode !== 'h') {
+                setState('ui.logsMode', 'h');
+                setState('ui.logsOffset', 1);
                 
                 // Update button states
                 document.getElementById('logs-mode-hour').classList.add('active');
@@ -1352,9 +1629,9 @@
             }
             logsLastRequestAt = now;
 
-            if (logsMode !== 'd') {
-                logsMode = 'd';
-                logsOffset = 1;
+            if (AppState.ui.logsMode !== 'd') {
+                setState('ui.logsMode', 'd');
+                setState('ui.logsOffset', 1);
                 
                 // Update button states
                 document.getElementById('logs-mode-day').classList.add('active');
@@ -1409,9 +1686,9 @@
                 return dateTimeStr.replace('T', ' ') + ':00';
             };
             
-            logsMode = 'custom';
-            logsCustomStart = formatForJournalctl(startDate);
-            logsCustomEnd = formatForJournalctl(endDate);
+            setState('ui.logsMode', 'custom');
+            setState('ui.logsCustomStart', formatForJournalctl(startDate));
+            setState('ui.logsCustomEnd', formatForJournalctl(endDate));
             
             // Update button states
             document.getElementById('logs-mode-custom').classList.add('active');
@@ -1434,16 +1711,16 @@
         // Pager buttons
         document.getElementById('logs-pager-previous')?.addEventListener('click', function() {
             if (!this.classList.contains('disabled')) {
-                logsOffset += 1;
+                setState('ui.logsOffset', AppState.ui.logsOffset + 1);
                 document.getElementById('logs-pager-next').classList.remove('disabled');
                 loadLogs();
             }
         });
 
         document.getElementById('logs-pager-next')?.addEventListener('click', function() {
-            if (!this.classList.contains('disabled') && logsOffset > 1) {
-                logsOffset -= 1;
-                if (logsOffset === 1) {
+            if (!this.classList.contains('disabled') && AppState.ui.logsOffset > 1) {
+                setState('ui.logsOffset', AppState.ui.logsOffset - 1);
+                if (AppState.ui.logsOffset === 1) {
                     this.classList.add('disabled');
                 }
                 loadLogs();
@@ -1455,17 +1732,13 @@
         document.getElementById('stopBtn')?.addEventListener('click', () => executeAction('stop'));
         document.getElementById('restartBtn')?.addEventListener('click', () => executeAction('restart'));
 
-        let isActionInProgress = false;
-        let isFileOperationInProgress = false;
-        let fileRefreshInterval = null;
-
         async function executeAction(action) {
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
             const restartBtn = document.getElementById('restartBtn');
             
             // Mark action in progress to prevent periodic updates from interfering
-            isActionInProgress = true;
+            setState('operations.actionInProgress', true);
             
             // Save original button states
             let targetBtn, originalHTML;
@@ -1502,6 +1775,9 @@
             if (stopBtn) stopBtn.disabled = true;
             if (restartBtn) restartBtn.disabled = true;
             
+            // Share action state across pages
+            SharedActionState.set(guid, host, service, action);
+            
             // Ensure DOM is updated before making the request
             await new Promise(resolve => setTimeout(resolve, 0));
             
@@ -1536,7 +1812,7 @@
                                 // Check if we've reached the expected status
                                 if (currentStatus === expectedStatus) {
                                     statusReached = true;
-                                    serverData = statusResult;
+                                    setState('server.data', statusResult);
                                     // ONLY update header when action completes
                                     updateServerHeader(statusResult);
                                     updateServerStats(statusResult.service);
@@ -1547,7 +1823,7 @@
                                     if (currentStatus === 'running' && document.getElementById('console').classList.contains('active')) {
                                         console.log('Reconnecting console stream...');
                                         await new Promise(resolve => setTimeout(resolve, 500));
-                                        if (!isConsoleStreaming) {
+                                        if (!AppState.operations.consoleStreaming) {
                                             startConsoleStream();
                                         }
                                     }
@@ -1571,7 +1847,7 @@
                         // Force a full page reload of server data to recalculate status
                         await new Promise(resolve => setTimeout(resolve, 1000));
                         // Disable action flag and reload
-                        isActionInProgress = false;
+                        setState('operations.actionInProgress', false);
                         await loadServerData();
                     }
                 } else {
@@ -1600,14 +1876,12 @@
                 if (restartBtn) restartBtn.disabled = false;
             } finally {
                 // Mark action as complete - allow periodic updates to resume
-                isActionInProgress = false;
+                setState('operations.actionInProgress', false);
+                SharedActionState.clear();
             }
         }
 
         // Console functionality
-        let consoleStream = null;
-        let isConsoleStreaming = false;
-
         function sendConsoleCommand() {
             const input = document.getElementById('consoleInput');
             const command = input.value.trim();
@@ -1615,7 +1889,7 @@
             if (!command) return;
             
             // Check if server is running
-            if (serverData?.service?.status !== 'running') {
+            if (AppState.server.data?.service?.status !== 'running') {
                 const output = document.getElementById('consoleOutput');
                 output.innerHTML += `<div class="console-output-line" style="color: #ff6b6b;">[ERROR] Cannot send commands while server is offline</div>`;
                 output.scrollTop = output.scrollHeight;
@@ -1669,7 +1943,7 @@
                 sendBtn.disabled = true;
                 
                 // Stop the console stream if it's running
-                if (isConsoleStreaming) {
+                if (AppState.operations.consoleStreaming) {
                     stopConsoleStream();
                 }
                 
@@ -1684,14 +1958,14 @@
                 
                 // Auto-start streaming if not already streaming and we're on console tab
                 const consoleTab = document.getElementById('console');
-                if (consoleTab.classList.contains('active') && !isConsoleStreaming) {
+                if (consoleTab.classList.contains('active') && !AppState.operations.consoleStreaming) {
                     startConsoleStream();
                 }
             }
         }
 
         function startConsoleStream() {
-            if (isConsoleStreaming) return; // Already streaming
+            if (AppState.operations.consoleStreaming) return; // Already streaming
 
             const statusEl = document.getElementById('consoleStreamStatus');
             const output = document.getElementById('consoleOutput');
@@ -1704,7 +1978,7 @@
             output.innerHTML = '<div class="console-output-line" style="color: #00d4aa;">[INFO] Connecting to live console...</div>';
 
             // Start streaming
-            consoleStream = stream(
+            setState('streams.console', stream(
                 `/api/service/console/${guid}/${host}/${service}`,
                 'GET',
                 {},
@@ -1725,15 +1999,15 @@
                     }
                 },
                 false
-            );
+            ));
 
             // Mark as streaming
-            isConsoleStreaming = true;
+            setState('operations.consoleStreaming', true);
             statusEl.innerHTML = '<i class="fas fa-circle" style="color: #00d4aa;"></i> Live';
             statusEl.style.color = '#00d4aa';
 
             // Handle stream end
-            consoleStream.then(() => {
+            AppState.streams.console.then(() => {
                 output.innerHTML += '<div class="console-output-line" style="color: #ffd93d;">[INFO] Console stream ended</div>';
                 output.scrollTop = output.scrollHeight;
                 stopConsoleStream();
@@ -1747,34 +2021,30 @@
         function stopConsoleStream() {
             const statusEl = document.getElementById('consoleStreamStatus');
 
-            if (consoleStream) {
+            if (AppState.streams.console) {
                 try {
-                    if (typeof consoleStream.cancel === 'function') {
-                        const cancelResult = consoleStream.cancel();
+                    if (typeof AppState.streams.console.cancel === 'function') {
+                        const cancelResult = AppState.streams.console.cancel();
                         // Only call .catch() if cancel returns a promise
                         if (cancelResult && typeof cancelResult.catch === 'function') {
-                            cancelResult.catch(err => {
-                                // Ignore abort errors, stream is already closing
-                                if (err && err.name !== 'AbortError') {
-                                    console.error('Error cancelling stream:', err);
-                                }
+                            cancelResult.catch(() => {
+                                // Silently ignore all cancellation errors
                             });
                         }
                     }
                 } catch (err) {
-                    // Ignore any errors during cleanup
-                    if (err && err.name !== 'AbortError') {
-                        console.error('Error during stream cleanup:', err);
-                    }
+                    // Silently ignore all errors during cleanup
                 }
             }
 
-            consoleStream = null;
-            isConsoleStreaming = false;
+            setState('streams.console', null);
+            setState('operations.consoleStreaming', false);
 
             // Update UI
-            statusEl.innerHTML = '<i class="fas fa-circle" style="color: #888;"></i> Disconnected';
-            statusEl.style.color = '#888';
+            if (statusEl) {
+                statusEl.innerHTML = '<i class="fas fa-circle" style="color: #888;"></i> Disconnected';
+                statusEl.style.color = '#888';
+            }
         }
 
         document.getElementById('consoleInput').addEventListener('keypress', e => {
@@ -1797,7 +2067,7 @@
         }
 
         // Load metrics for charts
-        let currentMetricsTimeframe = 'hour';
+        // Metrics timeframe managed via AppState
         let metricsRefreshInterval = null;
         let metricsLoading = false;
 
@@ -1817,7 +2087,7 @@
         }
 
         async function loadMetricsWithTimeframe(timeframe) {
-            currentMetricsTimeframe = timeframe;
+            setState('ui.metricsTimeframe', timeframe);
 
             // Update active button states
             document.querySelectorAll('.timeframe-btn').forEach(btn => {
@@ -1836,7 +2106,7 @@
             if (metricsLoading) return; // prevent overlapping requests
             metricsLoading = true;
             try {
-                const response = await fetch(`/api/metrics/${host}/${service}?timeframe=${currentMetricsTimeframe}`);
+                const response = await fetch(`/api/metrics/${host}/${service}?timeframe=${AppState.ui.metricsTimeframe}`);
                 const result = await response.json();
 
                 if (result.success) {
@@ -1908,26 +2178,15 @@
                     return;
                 }
 
-                // Detect whether a complete date adapter is available
-                let hasDateAdapter = false;
-                try {
-                    const adapters = Chart && (Chart._adapters || Chart.adapters);
-                    const dateAdapter = adapters && (adapters._date || adapters.date);
-                    hasDateAdapter = !!(dateAdapter && (dateAdapter.formats || dateAdapter.parse));
-                } catch (e) {
-                    hasDateAdapter = false;
-                }
+                // Date adapter is always available with date-fns
+                const hasDateAdapter = true;
 
-                if (!hasDateAdapter) {
-                    console.warn('No complete date adapter found - falling back to index-based x-axis to avoid adapter errors.');
-                }
-
-                // Convert metrics to points (either time-based or index-based)
-                const cpuData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseFloat(m.cpu_usage) || 0} : {x: i, y: parseFloat(m.cpu_usage) || 0});
-                const memoryData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseFloat(m.memory_usage) || 0} : {x: i, y: parseFloat(m.memory_usage) || 0});
-                const playersData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseInt(m.player_count) || 0} : {x: i, y: parseInt(m.player_count) || 0});
-                const statusData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: m.status === 1 ? 1 : 0} : {x: i, y: m.status === 1 ? 1 : 0});
-                const responseTimeData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseFloat(m.response_time) || 0} : {x: i, y: parseFloat(m.response_time) || 0});
+                // Convert metrics to points with time-based x-axis
+                const cpuData = sorted.map((m) => ({x: m.timestamp * 1000, y: parseFloat(m.cpu_usage) || 0}));
+                const memoryData = sorted.map((m) => ({x: m.timestamp * 1000, y: parseFloat(m.memory_usage) || 0}));
+                const playersData = sorted.map((m) => ({x: m.timestamp * 1000, y: parseInt(m.player_count) || 0}));
+                const statusData = sorted.map((m) => ({x: m.timestamp * 1000, y: m.status === 1 ? 1 : 0}));
+                const responseTimeData = sorted.map((m) => ({x: m.timestamp * 1000, y: parseFloat(m.response_time) || 0}));
 
                 // Build options depending on adapter availability
                 const commonOptions = {
@@ -1938,13 +2197,10 @@
                         tooltip: { mode: 'index', intersect: false }
                     },
                     scales: {
-                        x: hasDateAdapter ? {
+                        x: {
                             type: 'time',
-                            time: { unit: getTimeUnitForTimeframe(currentMetricsTimeframe) },
+                            time: { unit: getTimeUnitForTimeframe(AppState.ui.metricsTimeframe) },
                             ticks: { autoSkip: true, maxRotation: 0 }
-                        } : {
-                            type: 'linear',
-                            ticks: { maxRotation: 0 }
                         },
                         y: { beginAtZero: true }
                     }
@@ -2044,43 +2300,39 @@
 
                 // Update existing charts in place
                 try {
-                    // If date adapter is absent, we are in index-mode; otherwise update time unit
-                    const adapters = Chart && (Chart._adapters || Chart.adapters);
-                    const dateAdapter = adapters && (adapters._date || adapters.date);
-                    const hasDateAdapter = !!(dateAdapter && (dateAdapter.formats || dateAdapter.parse));
-
+                    // Date adapter is always available with date-fns
                     if (this.charts.cpu) {
-                        this.charts.cpu.data.datasets[0].data = hasDateAdapter ? cpuData : cpuData.map((d, i) => ({x: i, y: d.y}));
-                        if (hasDateAdapter && this.charts.cpu.options && this.charts.cpu.options.scales && this.charts.cpu.options.scales.x) {
-                            if (this.charts.cpu.options.scales.x.time) this.charts.cpu.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        this.charts.cpu.data.datasets[0].data = cpuData;
+                        if (this.charts.cpu.options && this.charts.cpu.options.scales && this.charts.cpu.options.scales.x) {
+                            if (this.charts.cpu.options.scales.x.time) this.charts.cpu.options.scales.x.time.unit = getTimeUnitForTimeframe(AppState.ui.metricsTimeframe);
                         }
                         this.charts.cpu.update();
                     }
                     if (this.charts.memory) {
-                        this.charts.memory.data.datasets[0].data = hasDateAdapter ? memoryData : memoryData.map((d, i) => ({x: i, y: d.y}));
-                        if (hasDateAdapter && this.charts.memory.options && this.charts.memory.options.scales && this.charts.memory.options.scales.x) {
-                            if (this.charts.memory.options.scales.x.time) this.charts.memory.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        this.charts.memory.data.datasets[0].data = memoryData;
+                        if (this.charts.memory.options && this.charts.memory.options.scales && this.charts.memory.options.scales.x) {
+                            if (this.charts.memory.options.scales.x.time) this.charts.memory.options.scales.x.time.unit = getTimeUnitForTimeframe(AppState.ui.metricsTimeframe);
                         }
                         this.charts.memory.update();
                     }
                     if (this.charts.players) {
-                        this.charts.players.data.datasets[0].data = hasDateAdapter ? playersData : playersData.map((d, i) => ({x: i, y: d.y}));
-                        if (hasDateAdapter && this.charts.players.options && this.charts.players.options.scales && this.charts.players.options.scales.x) {
-                            if (this.charts.players.options.scales.x.time) this.charts.players.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        this.charts.players.data.datasets[0].data = playersData;
+                        if (this.charts.players.options && this.charts.players.options.scales && this.charts.players.options.scales.x) {
+                            if (this.charts.players.options.scales.x.time) this.charts.players.options.scales.x.time.unit = getTimeUnitForTimeframe(AppState.ui.metricsTimeframe);
                         }
                         this.charts.players.update();
                     }
                     if (this.charts.status) {
-                        this.charts.status.data.datasets[0].data = hasDateAdapter ? statusData : statusData.map((d, i) => ({x: i, y: d.y}));
-                        if (hasDateAdapter && this.charts.status.options && this.charts.status.options.scales && this.charts.status.options.scales.x) {
-                            if (this.charts.status.options.scales.x.time) this.charts.status.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        this.charts.status.data.datasets[0].data = statusData;
+                        if (this.charts.status.options && this.charts.status.options.scales && this.charts.status.options.scales.x) {
+                            if (this.charts.status.options.scales.x.time) this.charts.status.options.scales.x.time.unit = getTimeUnitForTimeframe(AppState.ui.metricsTimeframe);
                         }
                         this.charts.status.update();
                     }
                     if (this.charts.responseTime) {
-                        this.charts.responseTime.data.datasets[0].data = hasDateAdapter ? responseTimeData : responseTimeData.map((d, i) => ({x: i, y: d.y}));
-                        if (hasDateAdapter && this.charts.responseTime.options && this.charts.responseTime.options.scales && this.charts.responseTime.options.scales.x) {
-                            if (this.charts.responseTime.options.scales.x.time) this.charts.responseTime.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        this.charts.responseTime.data.datasets[0].data = responseTimeData;
+                        if (this.charts.responseTime.options && this.charts.responseTime.options.scales && this.charts.responseTime.options.scales.x) {
+                            if (this.charts.responseTime.options.scales.x.time) this.charts.responseTime.options.scales.x.time.unit = getTimeUnitForTimeframe(AppState.ui.metricsTimeframe);
                         }
                         this.charts.responseTime.update();
                     }
@@ -2118,7 +2370,7 @@
 
         // File browser
         function resolveTargetPath(path) {
-            const basePath = serverData?.host?.path || '';
+            const basePath = AppState.server.data?.host?.path || '';
 
             if (!path || path === '/') {
                 return basePath;
@@ -2133,7 +2385,7 @@
         }
 
         function toRelativePath(path) {
-            const basePath = serverData?.host?.path || '';
+            const basePath = AppState.server.data?.host?.path || '';
 
             if (!path || !basePath || !path.startsWith(basePath)) {
                 return path || '/';
@@ -2165,13 +2417,13 @@
         }
 
         async function loadFiles(path) {
-            if (!serverData?.host?.path) {
+            if (!AppState.server.data?.host?.path) {
                 showToast('error', 'Server data not loaded yet');
                 return;
             }
 
             const targetPath = resolveTargetPath(path);
-            currentPath = toRelativePath(targetPath);
+            setState('ui.currentFilePath', toRelativePath(targetPath));
             document.getElementById('currentPath').value = targetPath;
 
             try {
@@ -2252,30 +2504,31 @@
         }
 
         function navigateUp() {
-            if (currentPath === '/' || currentPath === '') return;
-            const parts = currentPath.split('/').filter(p => p);
+            if (AppState.ui.currentFilePath === '/' || AppState.ui.currentFilePath === '') return;
+            const parts = AppState.ui.currentFilePath.split('/').filter(p => p);
             parts.pop();
             loadFiles('/' + parts.join('/'));
         }
 
         function refreshFiles() {
-            loadFiles(currentPath);
+            loadFiles(AppState.ui.currentFilePath);
         }
 
         function startFileOperationRefresh() {
-            if (isFileOperationInProgress) return; // Already running
+            if (AppState.operations.fileOpInProgress) return; // Already running
             
-            isFileOperationInProgress = true;
-            fileRefreshInterval = setInterval(() => {
+            setState('operations.fileOpInProgress', true);
+            const refreshInterval = setInterval(() => {
                 refreshFiles();
             }, 1000); // Refresh every second
+            setState('intervals.fileRefresh', refreshInterval);
         }
 
         function stopFileOperationRefresh() {
-            isFileOperationInProgress = false;
-            if (fileRefreshInterval) {
-                clearInterval(fileRefreshInterval);
-                fileRefreshInterval = null;
+            setState('operations.fileOpInProgress', false);
+            if (AppState.intervals.fileRefresh) {
+                clearInterval(AppState.intervals.fileRefresh);
+                setState('intervals.fileRefresh', null);
             }
         }
 
@@ -2333,7 +2586,7 @@
                 });
         }
 
-        let fileEditor = null;
+        // File editor will be lazily initialized in CodeMirror
 
         function getLanguageFromFilename(filename) {
             const ext = filename.split('.').pop().toLowerCase();
@@ -2359,7 +2612,7 @@
                 saveBtn = document.getElementById('fileEditorSaveBtn'),
                 downloadBtn = document.getElementById('fileEditorDownloadBtn');
 
-            currentFilePath = fileData.path;
+            setState('ui.editingFile', fileData.path);
             title.innerHTML = `<i class="fas fa-edit"></i> ${fileData.name}`;
             status.style.display = 'none';
             status.textContent = '';
@@ -2369,9 +2622,9 @@
             modal.classList.add('show');
 
             // Initialize editor on first open (lazy initialization)
-            if (!fileEditor) {
+            if (!AppState.config.fileEditor) {
                 setTimeout(() => {
-                    fileEditor = CodeMirror(document.getElementById('fileEditorContainer'), {
+                    setState('config.fileEditor', CodeMirror(document.getElementById('fileEditorContainer'), {
                         lineNumbers: true,
                         mode: 'null',
                         theme: 'material-darker',
@@ -2384,22 +2637,22 @@
                         autoCloseBrackets: true,
                         showCursorWhenSelecting: true,
                         viewportMargin: 10
-                    });
+                    }));
 
                     // Set content after initialization
                     const syntaxMode = getLanguageFromFilename(fileData.name);
-                    fileEditor.setOption('mode', syntaxMode);
-                    fileEditor.setValue(fileData.content || '');
-                    fileEditor.clearHistory();
+                    AppState.config.fileEditor.setOption('mode', syntaxMode);
+                    AppState.config.fileEditor.setValue(fileData.content || '');
+                    AppState.config.fileEditor.clearHistory();
                 }, 100);
             } else {
                 // Update existing editor
                 setTimeout(() => {
                     const syntaxMode = getLanguageFromFilename(fileData.name);
-                    fileEditor.setOption('mode', syntaxMode);
-                    fileEditor.setValue(fileData.content || '');
-                    fileEditor.clearHistory();
-                    fileEditor.refresh();
+                    AppState.config.fileEditor.setOption('mode', syntaxMode);
+                    AppState.config.fileEditor.setValue(fileData.content || '');
+                    AppState.config.fileEditor.clearHistory();
+                    AppState.config.fileEditor.refresh();
                 }, 50);
             }
         }
@@ -2407,21 +2660,21 @@
         function closeFileModal() {
             const modal = document.getElementById('fileEditorModal');
             modal.classList.remove('show');
-            currentFilePath = null;
+            setState('ui.editingFile', null);
         }
 
         function downloadCurrentFile() {
-            if (!currentFilePath) return;
-            downloadFile(currentFilePath);
+            if (!AppState.ui.editingFile) return;
+            downloadFile(AppState.ui.editingFile);
         }
 
-        let currentCompressedFile = null;
+        // Compressed file state managed via AppState
 
         function openCompressedFileModal(fileData) {
             const modal = document.getElementById('compressedFileModal'),
                 title = document.getElementById('compressedFileTitle');
 
-            currentCompressedFile = fileData;
+            setState('ui.compressedFile', fileData);
             title.innerHTML = `<i class="fas fa-file-archive"></i> ${fileData.name}`;
             
             const status = document.getElementById('compressedFileStatus');
@@ -2434,7 +2687,7 @@
         function closeCompressedFileModal() {
             const modal = document.getElementById('compressedFileModal');
             modal.classList.remove('show');
-            currentCompressedFile = null;
+            setState('ui.compressedFile', null);
         }
 
         // File Action Modal
@@ -2519,13 +2772,13 @@
         });
 
         function downloadCompressedFile() {
-            if (!currentCompressedFile) return;
-            downloadFile(currentCompressedFile.path);
+            if (!AppState.ui.compressedFile) return;
+            downloadFile(AppState.ui.compressedFile.path);
             closeCompressedFileModal();
         }
 
         async function extractCompressedFile() {
-            if (!currentCompressedFile) return;
+            if (!AppState.ui.compressedFile) return;
 
             startFileOperationRefresh();
 
@@ -2539,7 +2792,7 @@
             status.innerHTML = '<div style="color: #0096ff;"><i class="fas fa-spinner fa-spin"></i> Extracting...</div>';
 
             try {
-                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(currentCompressedFile.path)}&extract=1`, {
+                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(AppState.ui.compressedFile.path)}&extract=1`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
@@ -2653,7 +2906,7 @@
         document.getElementById('contextMove')?.addEventListener('click', () => {
             if (contextMenuFile) {
                 const file = { ...contextMenuFile }; // Capture file data
-                const basePath = serverData?.host?.path || '';
+                const basePath = AppState.server.data?.host?.path || '';
                 showFileActionModal(
                     'Move File/Folder',
                     `Move "${file.name}" to:`,
@@ -2905,7 +3158,7 @@
         }
 
         async function saveFileEdits() {
-            if (!currentFilePath) return;
+            if (!AppState.ui.editingFile) return;
 
             startFileOperationRefresh();
 
@@ -2918,7 +3171,7 @@
             status.textContent = 'Saving...';
 
             try {
-                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(currentFilePath)}`, {
+                const response = await fetch(`/api/file/${host}?path=${encodeURIComponent(AppState.ui.editingFile)}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'text/plain' },
                     body: fileEditor.getValue()
@@ -2930,6 +3183,8 @@
                     status.textContent = 'File saved successfully';
                     saveBtn.disabled = false;
                     stopFileOperationRefresh();
+                    // Refresh server data if file save might affect state
+                    setTimeout(() => loadServerData(), 500);
                     return;
                 }
 
@@ -2946,8 +3201,6 @@
         }
 
         // Settings
-        let applicationOptions = [];
-
         async function loadSettings() {
             // Load server configuration options
             document.getElementById('serverSettings').innerHTML = '';
@@ -3003,6 +3256,27 @@
             `;
             serverSettingsDiv.appendChild(restartsSection);
 
+            // Auto Boot Section
+            const autoBootSection = document.createElement('div');
+            autoBootSection.innerHTML = `
+                <h5 style="margin-top: 1.5rem; margin-bottom: 1rem;"><i class="fas fa-power-off"></i> Auto Boot</h5>
+                <div id="autoBootDisabledMessage" style="display:none;">
+                    <div class="warning-message" style="margin-bottom: 1rem;">
+                        This service will NOT start automatically when the host boots.
+                    </div>
+                </div>
+                <div id="autoBootEnabledMessage" style="display:none;">
+                    <div class="success-message" style="margin-bottom: 1rem;">
+                        This service will start automatically when the host boots.
+                    </div>
+                </div>
+                <button class="action-edit" id="autoBootToggleBtn">
+                    <i class="fas fa-toggle-off"></i>
+                    Enable Auto Boot
+                </button>
+            `;
+            serverSettingsDiv.appendChild(autoBootSection);
+
             // Reinstall Application Section
             const reinstallSection = document.createElement('div');
             reinstallSection.innerHTML = `
@@ -3025,6 +3299,8 @@
             // Load automatic updates and restarts configuration
             loadAutomaticUpdates();
             loadAutomaticRestarts();
+
+            updateAutoBootUI(AppState.server.data?.service?.enabled);
 
             // Enable reinstall button
             document.getElementById('reinstallBtn').classList.remove('disabled');
@@ -3050,8 +3326,13 @@
             document.getElementById('saveAutoRestartBtn').addEventListener('click', saveAutomaticRestarts);
 
             // Handle schedule change for weekly day row visibility and delayed checkbox
-            const updateScheduleSelect = document.getElementById('autoUpdateSchedule');
-            const restartScheduleSelect = document.getElementById('autoRestartSchedule');
+            const updateScheduleSelect = document.getElementById('autoUpdateSchedule'),
+                restartScheduleSelect = document.getElementById('autoRestartSchedule'),
+                autoBootToggleBtn = document.getElementById('autoBootToggleBtn');
+
+            if (autoBootToggleBtn) {
+                autoBootToggleBtn.addEventListener('click', toggleAutoBoot);
+            }
             
             if (updateScheduleSelect) {
                 updateScheduleSelect.addEventListener('change', () => {
@@ -3079,6 +3360,84 @@
                 });
                 // Initialize visibility
                 restartScheduleSelect.dispatchEvent(new Event('change'));
+            }
+        }
+
+        function updateAutoBootUI(isEnabled) {
+            const enabledMessage = document.getElementById('autoBootEnabledMessage'),
+                disabledMessage = document.getElementById('autoBootDisabledMessage'),
+                toggleBtn = document.getElementById('autoBootToggleBtn');
+
+            if (!enabledMessage || !disabledMessage || !toggleBtn) {
+                return;
+            }
+
+            enabledMessage.style.display = isEnabled ? 'block' : 'none';
+            disabledMessage.style.display = isEnabled ? 'none' : 'block';
+
+            if (isEnabled) {
+                toggleBtn.innerHTML = '<i class="fas fa-toggle-on"></i> Disable Auto Boot';
+            } else {
+                toggleBtn.innerHTML = '<i class="fas fa-toggle-off"></i> Enable Auto Boot';
+            }
+
+            // Clear updating state
+            setState('operations.autoBootUpdating', false);
+            toggleBtn.classList.remove('updating');
+        }
+
+        async function toggleAutoBoot() {
+            const toggleBtn = document.getElementById('autoBootToggleBtn'),
+                currentEnabled = !!AppState.server.data?.service?.enabled,
+                action = currentEnabled ? 'disable' : 'enable';
+
+            if (!toggleBtn) {
+                return;
+            }
+
+            if (!AppState.server.data?.service) {
+                showToast('error', 'Server data not loaded');
+                return;
+            }
+
+            // Mark as updating and apply visual disabled state
+            setState('operations.autoBootUpdating', true);
+            toggleBtn.disabled = true;
+            toggleBtn.classList.add('updating');
+            toggleBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+            toggleBtn.style.opacity = '0.6';
+            toggleBtn.style.cursor = 'not-allowed';
+
+            // Poll more frequently while updating (every 5 seconds)
+            stopServerDataRefresh();
+            startServerDataRefresh(5000);
+
+            try {
+                const result = await serviceAction(guid, host, service, action);
+
+                if (result.success) {
+                    setState('server.data.service.enabled', !currentEnabled);
+                    updateAutoBootUI(!currentEnabled);
+                    showToast('success', currentEnabled ? 'Auto boot disabled' : 'Auto boot enabled');
+                    
+                    // Continue aggressive polling for 10 seconds to catch any dashboard changes
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                    return;
+                }
+
+                updateAutoBootUI(currentEnabled);
+                showToast('error', result.error || 'Failed to update auto boot');
+            } catch (error) {
+                updateAutoBootUI(currentEnabled);
+                showToast('error', 'Failed to update auto boot');
+            } finally {
+                // Restore normal polling interval
+                stopServerDataRefresh();
+                startServerDataRefresh(30000);
+                
+                toggleBtn.disabled = false;
+                toggleBtn.style.opacity = '1';
+                toggleBtn.style.cursor = 'pointer';
             }
         }
 
@@ -3116,7 +3475,7 @@
 
         async function saveAutomaticUpdates() {
             const identifier = `${guid}_update`;
-            const gameDir = serverData?.host?.path;
+            const gameDir = AppState.server.data?.host?.path;
             const delayedUpdate = document.getElementById('delayedUpdate');
 
             if (!gameDir) {
@@ -3138,6 +3497,8 @@
                             showToast('success', 'Automatic updates disabled.');
                             document.getElementById('autoUpdateModal').classList.remove('show');
                             loadAutomaticUpdates();
+                            // Reload server data to catch cache changes
+                            setTimeout(() => loadServerData(), 1000);
                         } else {
                             showToast('error', `Failed to disable automatic updates: ${response.error}`);
                         }
@@ -3146,7 +3507,7 @@
             }
 
             let command;
-            if (applicationOptions.includes('delayed-update') && delayedUpdate?.checked) {
+            if (AppState.config.applicationOptions.includes('delayed-update') && delayedUpdate?.checked) {
                 command = `${gameDir}/manage.py --check-update && ${gameDir}/manage.py --delayed-update`;
             } else {
                 command = `! ${gameDir}/manage.py --has-players && ${gameDir}/manage.py --check-update && ${gameDir}/manage.py --update`;
@@ -3163,6 +3524,8 @@
                         showToast('success', 'Automatic updates scheduled.');
                         document.getElementById('autoUpdateModal').classList.remove('show');
                         loadAutomaticUpdates();
+                        // Reload server data to catch any cached state changes
+                        setTimeout(() => loadServerData(), 1000);
                     } else {
                         showToast('error', `Failed to save schedule: ${response.error}`);
                     }
@@ -3171,7 +3534,7 @@
 
         async function saveAutomaticRestarts() {
             const identifier = `${guid}_restart`;
-            const gameDir = serverData?.host?.path;
+            const gameDir = AppState.server.data?.host?.path;
 
             if (!gameDir) {
                 showToast('error', 'Cannot determine game directory for this host.');
@@ -3192,6 +3555,8 @@
                             showToast('success', 'Automatic restarts disabled.');
                             document.getElementById('autoRestartModal').classList.remove('show');
                             loadAutomaticRestarts();
+                            // Reload server data to catch cache changes
+                            setTimeout(() => loadServerData(), 1000);
                         } else {
                             showToast('error', `Failed to disable automatic restarts: ${response.error}`);
                         }
@@ -3200,7 +3565,7 @@
             }
 
             let command;
-            if (applicationOptions.includes('delayed-restart')) {
+            if (AppState.config.applicationOptions.includes('delayed-restart')) {
                 command = `${gameDir}/manage.py --delayed-restart`;
             } else {
                 command = `${gameDir}/manage.py --restart`;
@@ -3217,6 +3582,8 @@
                         showToast('success', 'Automatic restarts scheduled.');
                         document.getElementById('autoRestartModal').classList.remove('show');
                         loadAutomaticRestarts();
+                        // Reload server data to catch any cached state changes
+                        setTimeout(() => loadServerData(), 1000);
                     } else {
                         showToast('error', `Failed to save schedule: ${response.error}`);
                     }
@@ -3224,7 +3591,7 @@
         }
 
         // Backups
-        let backupPath = null;
+        // Backup path managed via AppState.config.backupPath
 
         function renderBackupFile(fileData) {
             const fileItem = document.createElement('div');
@@ -3318,6 +3685,8 @@
                 
                 if (result.success) {
                     showToast('success', `Configuration option "${option}" updated successfully.`);
+                    // Reload server data to catch any state changes from config update
+                    setTimeout(() => loadServerData(), 500);
                 } else {
                     showToast('error', `Failed to update option "${option}": ${result.error}`);
                 }
@@ -3331,7 +3700,7 @@
             configContainer.innerHTML = '<div style="text-align: center;"><i class="fas fa-spinner fa-spin"></i> Loading configuration options...</div>';
 
             // Check if service is running
-            serviceRunning = serverData?.service?.status !== 'stopped';
+            serviceRunning = AppState.server.data?.service?.status !== 'stopped';
             
             if (serviceRunning) {
                 document.getElementById('configureWarningMessage').style.display = 'block';
@@ -3435,17 +3804,17 @@
         }
 
         async function loadBackupsList() {
-            if (!backupPath) {
-                backupPath = serverData?.host?.path + '/backups';
+            if (!AppState.config.backupPath) {
+                setState('config.backupPath', AppState.server.data?.host?.path + '/backups');
             }
-            if (!backupPath) {
+            if (!AppState.config.backupPath) {
                 document.getElementById('backupsList').innerHTML = '<p class="error-message">Backup path is not defined.</p>';
                 return;
             }
 
             document.getElementById('backupsList').innerHTML = '<div><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
 
-            fetch(`/api/files/${host}?path=${backupPath}`)
+            fetch(`/api/files/${host}?path=${AppState.config.backupPath}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
@@ -3491,7 +3860,7 @@
         async function saveAutomaticBackupConfig() {
             const keep = parseInt(document.getElementById('autoBackupKeep').value, 10) || 0;
             const identifier = `${guid}_backup`;
-            const gameDir = serverData?.host?.path;
+            const gameDir = AppState.server.data?.host?.path;
 
             if (!gameDir) {
                 showToast('error', 'Cannot determine game directory for this host.');
@@ -3512,6 +3881,8 @@
                             showToast('success', 'Automatic backups disabled.');
                             document.getElementById('autoBackupModal').classList.remove('show');
                             loadAutomaticBackupConfig();
+                            // Reload backups list to reflect schedule removal
+                            setTimeout(() => loadBackupsList(), 500);
                         } else {
                             showToast('error', `Failed to disable backups: ${response.error}`);
                         }
@@ -3532,6 +3903,8 @@
                         showToast('success', 'Automatic backup scheduled.');
                         document.getElementById('autoBackupModal').classList.remove('show');
                         loadAutomaticBackupConfig();
+                        // Reload backups list to reflect any schedule changes
+                        setTimeout(() => loadBackupsList(), 500);
                     } else {
                         showToast('error', `Failed to save schedule: ${response.error}`);
                     }
@@ -3569,6 +3942,7 @@
                 if (result.success) {
                     showToast('success', 'Backup renamed successfully');
                     document.getElementById('renameModal').classList.remove('show');
+                    // Reload immediately for backup rename
                     loadBackupsList();
                 } else {
                     showToast('error', `Error renaming backup: ${result.error}`);
@@ -3583,14 +3957,14 @@
             const files = fileInput.files;
             if (!files.length) return;
 
-            if (!backupPath) backupPath = serverData?.host?.path + '/backups';
+            if (!AppState.config.backupPath) setState('config.backupPath', AppState.server.data?.host?.path + '/backups');
             showToast('info', 'Starting upload, please wait...');
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
 
                 try {
-                    const response = await fetch(`/api/file/${host}?path=${backupPath}/${file.name}`, {
+                    const response = await fetch(`/api/file/${host}?path=${AppState.config.backupPath}/${file.name}`, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/octet-stream'},
                         body: file
@@ -3602,7 +3976,8 @@
                         showToast('error', `Error uploading ${file.name}: ${result.error}`);
                     } else {
                         showToast('success', `Successfully uploaded ${file.name}`);
-                        loadBackupsList();
+                        // Refresh backups list after successful upload
+                        setTimeout(() => loadBackupsList(), 500);
                     }
                 } catch (error) {
                     showToast('error', `Network error: ${error.message}`);
@@ -3617,7 +3992,20 @@
             
             // Don't initialize editor yet - wait until modal opens
             loadServerData();
-            setInterval(loadServerData, 30000); // Refresh every 30 seconds
+            startServerDataRefresh(30000); // Refresh every 30 seconds
+
+            // Listen for action state changes from other pages/tabs
+            onSharedActionStateChange((newState, oldState) => {
+                if (newState && newState.guid === guid && newState.host === host && newState.service === service) {
+                    // Action for this specific server started on another page
+                    setState('operations.actionInProgress', true);
+                } else if (oldState && !newState) {
+                    // Action completed on another page
+                    setState('operations.actionInProgress', false);
+                    // Refresh to get latest server state
+                    loadServerData();
+                }
+            });
 
             // Setup backup event listeners
             const fileInput = document.getElementById('fileInput');
@@ -3656,6 +4044,8 @@
                     .then(() => {
                         showToast('success', 'Backup completed successfully.');
                         loadBackupsList();
+                        // Reload server data to refresh stats and state
+                        setTimeout(() => loadServerData(), 500);
                     })
                     .catch(() => {
                         showToast('error', 'Backup encountered an error.');
@@ -3682,6 +4072,8 @@
                         showToast('success', 'Restore completed successfully.');
                         document.getElementById('restoreModal').classList.remove('show');
                         loadServerData();
+                        // Reload backups list to reflect any state changes
+                        setTimeout(() => loadBackupsList(), 1000);
                     })
                     .catch(() => {
                         showToast('error', 'Restore encountered an error.');
@@ -3737,6 +4129,8 @@
                     })
                     .then(() => {
                         showToast('success', 'Update process completed.');
+                        // Reload server data to refresh version info and state
+                        setTimeout(() => loadServerData(), 1000);
                     })
                     .catch(err => {
                         showToast('error', 'Update process encountered an error. See terminal output for details.');
@@ -3769,10 +4163,7 @@
             // Auto-start console stream on initial load since console tab is active by default
             startConsoleStream();
             
-            // Poll server status periodically to update console state
-            setInterval(() => {
-                loadServerData();
-            }, 5000); // Check every 5 seconds
+            // The main server data refresh is already handled by startServerDataRefresh(30000) above
 
             // Dropdown menu toggle for file operations
             document.addEventListener('click', function(e) {

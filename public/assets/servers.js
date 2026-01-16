@@ -11,9 +11,71 @@ if (typeof SERVERS_CONFIG !== 'undefined') {
     Object.assign(CONFIG, SERVERS_CONFIG);
 }
 
-let currentView = 'cards';
-let allServers = [];
-let isLoading = false;
+// DOM element cache - avoid repeated querySelector calls
+const DOM = {
+    serversGrid: null,
+    serversTable: null,
+    servicesTableBody: null,
+    viewToggleBtns: null
+};
+
+// Centralized state management
+const AppState = {
+    servers: [],
+    view: 'cards',
+    isLoading: false,
+    
+    // Track active server actions
+    actions: {
+        inProgress: false,
+        server: null,           // {guid, host, service}
+        action: null,           // 'start', 'stop', 'restart'
+        expectedStatus: null    // 'running', 'stopped'
+    },
+    
+    intervals: {
+        refresh: null,
+        statusPoll: null
+    }
+};
+
+/**
+ * Type-safe state setter
+ */
+function setState(path, value) {
+    const setNested = (obj, pathStr, val) => {
+        const keys = pathStr.split('.');
+        let current = obj;
+        
+        for (let i = 0; i < keys.length - 1; i++) {
+            const key = keys[i];
+            if (!(key in current)) {
+                current[key] = {};
+            }
+            current = current[key];
+        }
+        
+        const lastKey = keys[keys.length - 1];
+        current[lastKey] = val;
+    };
+    
+    setNested(AppState, path, value);
+}
+
+/**
+ * Safe getter for nested state properties
+ */
+function getState(path) {
+    const keys = path.split('.');
+    let current = AppState;
+    
+    for (const key of keys) {
+        if (current === null || current === undefined) return undefined;
+        current = current[key];
+    }
+    
+    return current;
+}
 
 /**
  * Escape HTML special characters to prevent XSS
@@ -70,10 +132,14 @@ function renderCardsView(servers) {
         return;
     }
 
-    const grid = document.getElementById('serversGrid');
+    // Lazy init DOM cache
+    if (!DOM.serversGrid) {
+        DOM.serversGrid = document.getElementById('serversGrid');
+        if (!DOM.serversGrid) return; // DOM not ready
+    }
     
     if (servers.length === 0) {
-        grid.innerHTML = `
+        DOM.serversGrid.innerHTML = `
             <div class="no-servers-message">
                 <i class="fas fa-server"></i>
                 <h3>No Servers Found</h3>
@@ -86,8 +152,10 @@ function renderCardsView(servers) {
         return;
     }
 
-    let html = '';
-    servers.forEach(server => {
+    // Build HTML using array and join (more efficient than += concatenation)
+    const htmlParts = new Array(servers.length);
+    for (let i = 0; i < servers.length; i++) {
+        const server = servers[i];
         const app_guid = escapeHtml(server.app),
             host = escapeHtml(server.host.host),
             service = escapeHtml(server.service.service),
@@ -98,9 +166,14 @@ function renderCardsView(servers) {
             playerCount = server.service.player_count != null ? server.service.player_count : 0,
             maxPlayers = server.service.max_players != null ? server.service.max_players : '?',
             memoryUsage = server.service.memory_usage != null ? server.service.memory_usage : '-',
-            cpuUsage = server.service.cpu_usage != null ? server.service.cpu_usage : '-';
+            cpuUsage = server.service.cpu_usage != null ? server.service.cpu_usage : '-',
+            // Check if this server has an action in progress
+            isActionInProgress = AppState.actions.inProgress && 
+                                AppState.actions.server?.guid === server.app &&
+                                AppState.actions.server?.host === server.host.host &&
+                                AppState.actions.server?.service === server.service.service;
 
-        html += `
+        htmlParts[i] = `
             <div class="server-card" data-guid="${app_guid}" data-host="${host}" data-service="${service}">
                 <div class="server-card-header">
                     ${appIcon}
@@ -136,32 +209,33 @@ function renderCardsView(servers) {
                         </div>
                     </div>
                     <div class="server-actions">
-                        <button class="server-action-btn view-server" data-guid="${app_guid}" data-host="${host}" data-service="${service}" title="View Server Details">
+                        <button class="server-action-btn view-server" data-guid="${app_guid}" data-host="${host}" data-service="${service}" title="View Server Details" ${isActionInProgress ? 'disabled' : ''}>
                             <i class="fas fa-eye"></i>
                             <span>View</span>
                         </button>
                         ${server.service.status === 'running' ? `
-                            <button class="server-action-btn stop" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="stop" title="Stop Server">
-                                <i class="fas fa-stop"></i>
-                                <span>Stop</span>
+                            <button class="server-action-btn stop" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="stop" title="Stop Server" ${isActionInProgress ? 'disabled' : ''}>
+                                ${isActionInProgress && AppState.actions.action === 'stop' ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-stop"></i>'}
+                                <span>${isActionInProgress && AppState.actions.action === 'stop' ? 'Stopping...' : 'Stop'}</span>
                             </button>
                         ` : `
-                            <button class="server-action-btn start" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="start" title="Start Server">
-                                <i class="fas fa-play"></i>
-                                <span>Start</span>
+                            <button class="server-action-btn start" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="start" title="Start Server" ${isActionInProgress ? 'disabled' : ''}>
+                                ${isActionInProgress && AppState.actions.action === 'start' ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-play"></i>'}
+                                <span>${isActionInProgress && AppState.actions.action === 'start' ? 'Starting...' : 'Start'}</span>
                             </button>
                         `}
-                        <button class="server-action-btn restart" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="restart" title="Restart Server">
-                            <i class="fas fa-redo"></i>
-                            <span>Restart</span>
+                        <button class="server-action-btn restart" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="restart" title="Restart Server" ${isActionInProgress ? 'disabled' : ''}>
+                            ${isActionInProgress && AppState.actions.action === 'restart' ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-redo"></i>'}
+                            <span>${isActionInProgress && AppState.actions.action === 'restart' ? 'Restarting...' : 'Restart'}</span>
                         </button>
                     </div>
                 </div>
             </div>
         `;
-    });
+    }
 
-    grid.innerHTML = html;
+    // Single DOM update with pre-built string
+    DOM.serversGrid.innerHTML = htmlParts.join('');
 }
 
 /**
@@ -173,11 +247,15 @@ function renderTableView(servers) {
         return;
     }
 
-    const table = document.getElementById('services-table');
-    const tbody = table.querySelector('tbody');
+    // Lazy init DOM cache
+    if (!DOM.servicesTableBody) {
+        const table = document.getElementById('services-table');
+        if (!table) return; // DOM not ready
+        DOM.servicesTableBody = table.querySelector('tbody');
+    }
 
     if (servers.length === 0) {
-        tbody.innerHTML = `
+        DOM.servicesTableBody.innerHTML = `
             <tr>
                 <td colspan="9" style="text-align: center; padding: 2rem;">
                     <div class="no-servers-message">
@@ -191,8 +269,10 @@ function renderTableView(servers) {
         return;
     }
 
-    let html = '';
-    servers.forEach(server => {
+    // Build HTML using array and join (more efficient than += concatenation)
+    const htmlParts = new Array(servers.length);
+    for (let i = 0; i < servers.length; i++) {
+        const server = servers[i];
         const app_guid = escapeHtml(server.app),
             host = escapeHtml(server.host.host),
             service = escapeHtml(server.service.service),
@@ -202,9 +282,14 @@ function renderTableView(servers) {
             playerCount = server.service.player_count != null ? server.service.player_count : 0,
             maxPlayers = server.service.max_players != null ? server.service.max_players : '?',
             memoryUsage = server.service.memory_usage != null ? server.service.memory_usage : '-',
-            cpuUsage = server.service.cpu_usage != null ? server.service.cpu_usage : '-';
+            cpuUsage = server.service.cpu_usage != null ? server.service.cpu_usage : '-',
+            // Check if this server has an action in progress
+            isActionInProgress = AppState.actions.inProgress && 
+                                AppState.actions.server?.guid === server.app &&
+                                AppState.actions.server?.host === server.host.host &&
+                                AppState.actions.server?.service === server.service.service;
 
-        html += `
+        htmlParts[i] = `
             <tr class="service" data-guid="${app_guid}" data-host="${host}" data-service="${service}">
                 <td class="host">${renderHostName(host)}</td>
                 <td class="icon">${appIcon}</td>
@@ -216,29 +301,32 @@ function renderTableView(servers) {
                 <td class="cpu">${cpuUsage}</td>
                 <td class="actions">
                     <div class="button-group">
-                        <button class="link-control view-server" data-guid="${app_guid}" data-host="${host}" data-service="${service}" title="View Server">
+                        <button class="link-control view-server" data-guid="${app_guid}" data-host="${host}" data-service="${service}" title="View Server" ${isActionInProgress ? 'disabled' : ''}>
                             <i class="fas fa-eye"></i><span>View</span>
                         </button>
                         ${server.service.status === 'running' ? `
-                            <button class="server-action-btn stop" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="stop" title="Stop">
-                                <i class="fas fa-stop"></i><span>Stop</span>
+                            <button class="server-action-btn stop" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="stop" title="Stop" ${isActionInProgress ? 'disabled' : ''}>
+                                ${isActionInProgress && AppState.actions.action === 'stop' ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-stop"></i>'}
+                                <span>${isActionInProgress && AppState.actions.action === 'stop' ? 'Stopping...' : 'Stop'}</span>
                             </button>
                         ` : `
-                            <button class="server-action-btn start" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="start" title="Start">
-                                <i class="fas fa-play"></i><span>Start</span>
+                            <button class="server-action-btn start" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="start" title="Start" ${isActionInProgress ? 'disabled' : ''}>
+                                ${isActionInProgress && AppState.actions.action === 'start' ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-play"></i>'}
+                                <span>${isActionInProgress && AppState.actions.action === 'start' ? 'Starting...' : 'Start'}</span>
                             </button>
                         `}
-                        <button class="server-action-btn restart" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="restart" title="Restart Server">
-                            <i class="fas fa-redo"></i>
-                            <span>Restart</span>
+                        <button class="server-action-btn restart" data-guid="${app_guid}" data-host="${host}" data-service="${service}" data-action="restart" title="Restart Server" ${isActionInProgress ? 'disabled' : ''}>
+                            ${isActionInProgress && AppState.actions.action === 'restart' ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-redo"></i>'}
+                            <span>${isActionInProgress && AppState.actions.action === 'restart' ? 'Restarting...' : 'Restart'}</span>
                         </button>
                     </div>
                 </td>
             </tr>
         `;
-    });
+    }
 
-    tbody.innerHTML = html;
+    // Single DOM update with pre-built string
+    DOM.servicesTableBody.innerHTML = htmlParts.join('');
 }
 
 /**
@@ -259,45 +347,20 @@ function getStatusIcon(status) {
 }
 
 /**
- * Handle server control actions
- */
-function handleServerAction(guid, host, service, action) {
-    fetch('/api/service/control', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            guid: guid,
-            host: host,
-            service: service,
-            action: action
-        })
-    })
-    .then(r => r.json())
-    .then(result => {
-        if (result.success) {
-            showToast('success', `Server ${action} command sent successfully`);
-            // Reload servers after a short delay
-            setTimeout(loadServers, CONFIG.RELOAD_DELAY);
-        } else {
-            showToast('error', result.error || 'Failed to execute action');
-        }
-    })
-    .catch(error => {
-        console.error('Error executing action:', error);
-        showToast('error', 'Failed to execute action');
-    });
-}
-
-/**
  * Load all servers
  */
 function loadServers() {
-    // Prevent concurrent requests
-    if (isLoading) {
+    // Skip if action is in progress
+    if (AppState.actions.inProgress) {
         return;
     }
 
-    isLoading = true;
+    // Prevent concurrent requests
+    if (AppState.isLoading) {
+        return;
+    }
+
+    setState('isLoading', true);
     
     fetch('/api/services', {method: 'GET'})
         .then(r => r.json())
@@ -310,12 +373,12 @@ function loadServers() {
                 
                 // Validate and filter servers
                 const validServers = validateServicesResponse(result);
-                allServers = validServers;
+                setState('servers', validServers);
                 renderView();
             } catch (error) {
                 console.error('Error validating servers response:', error);
                 // Preserve previous server state on error
-                if (allServers.length === 0) {
+                if (AppState.servers.length === 0) {
                     showToast('error', `Failed to load servers: ${error.message}`);
                     renderView(); // Render empty state
                 }
@@ -324,28 +387,150 @@ function loadServers() {
         .catch(error => {
             console.error('Error loading servers:', error);
             // Preserve previous server state on error
-            if (allServers.length === 0) {
+            if (AppState.servers.length === 0) {
                 showToast('error', 'Failed to load servers. Please check your connection.');
                 renderView(); // Render empty state
             }
         })
         .finally(() => {
-            isLoading = false;
+            setState('isLoading', false);
         });
+}
+
+/**
+ * Handle server control actions with proper state management and polling
+ */
+async function handleServerAction(guid, host, service, action) {
+    // Don't allow concurrent actions
+    if (AppState.actions.inProgress) {
+        showToast('warning', 'An action is already in progress');
+        return;
+    }
+
+    // Determine expected status
+    const expectedStatus = action === 'stop' ? 'stopped' : 'running';
+
+    // Mark action in progress locally and in shared state
+    setState('actions.inProgress', true);
+    setState('actions.server', {guid, host, service});
+    setState('actions.action', action);
+    setState('actions.expectedStatus', expectedStatus);
+    
+    // Share action state across pages
+    SharedActionState.set(guid, host, service, action);
+
+    // Re-render to show loading state
+    renderView();
+
+    try {
+        const response = await fetch('/api/service/control', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({guid, host, service, action})
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            showToast('error', result.error || 'Failed to execute action');
+            setState('actions.inProgress', false);
+            setState('actions.server', null);
+            setState('actions.action', null);
+            SharedActionState.clear();
+            renderView();
+            return;
+        }
+
+        showToast('success', `Server ${action} command sent`);
+
+        // Wait for service to transition
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Poll for status change
+        let statusReached = false;
+        let attempts = 0;
+        const maxAttempts = 30; // Max 30 seconds
+
+        while (!statusReached && attempts < maxAttempts) {
+            try {
+                const statusResponse = await fetch('/api/services');
+                const statusResult = await statusResponse.json();
+
+                if (statusResult.success && Array.isArray(statusResult.services)) {
+                    // Find this specific server
+                    const server = statusResult.services.find(s => 
+                        s.app === guid && 
+                        s.host.host === host && 
+                        s.service.service === service
+                    );
+
+                    if (server) {
+                        console.log(`[Status] Expected: "${expectedStatus}", Got: "${server.service.status}", Attempt: ${attempts + 1}`);
+
+                        if (server.service.status === expectedStatus) {
+                            statusReached = true;
+                            console.log(`✓ Status transition complete to "${expectedStatus}"`);
+                            showToast('success', `Server ${action} completed`);
+                            break;
+                        }
+                    }
+                }
+            } catch (pollError) {
+                console.error('Error polling status:', pollError);
+            }
+
+            attempts++;
+            if (!statusReached && attempts < maxAttempts) {
+                // Wait 1 second before next poll
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        if (!statusReached) {
+            console.warn(`Status update timeout after ${attempts} attempts - forcing full refresh`);
+            showToast('warning', `Server ${action} may have completed - refreshing...`);
+        }
+
+    } catch (error) {
+        console.error('Error executing action:', error);
+        showToast('error', 'Failed to execute action');
+    } finally {
+        // Mark action as complete
+        setState('actions.inProgress', false);
+        setState('actions.server', null);
+        setState('actions.action', null);
+        SharedActionState.clear();
+        
+        // Force a full refresh from API regardless of timeout
+        await new Promise(resolve => setTimeout(resolve, 500));
+        loadServers();
+    }
 }
 
 /**
  * Render current view based on selection
  */
 function renderView() {
-    if (currentView === 'cards') {
-        document.getElementById('serversGrid').style.display = 'grid';
-        document.getElementById('serversTable').style.display = 'none';
-        renderCardsView(allServers);
+    // Lazy init DOM cache
+    if (!DOM.serversGrid) {
+        DOM.serversGrid = document.getElementById('serversGrid');
+    }
+    if (!DOM.serversTable) {
+        DOM.serversTable = document.getElementById('serversTable');
+    }
+    
+    if (!DOM.serversGrid || !DOM.serversTable) {
+        return; // DOM not ready yet
+    }
+
+    if (AppState.view === 'cards') {
+        DOM.serversGrid.style.display = 'grid';
+        DOM.serversTable.style.display = 'none';
+        renderCardsView(AppState.servers);
     } else {
-        document.getElementById('serversGrid').style.display = 'none';
-        document.getElementById('serversTable').style.display = 'block';
-        renderTableView(allServers);
+        DOM.serversGrid.style.display = 'none';
+        DOM.serversTable.style.display = 'block';
+        renderTableView(AppState.servers);
     }
 }
 
@@ -359,19 +544,46 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Auto-refresh every N seconds (configurable)
     if (CONFIG.AUTO_REFRESH_ENABLED) {
-        setInterval(loadServers, CONFIG.REFRESH_INTERVAL);
+        const refreshInterval = setInterval(loadServers, CONFIG.REFRESH_INTERVAL);
+        setState('intervals.refresh', refreshInterval);
     }
 
-    // View toggle with debouncing
+    // Listen for action state changes from other pages/tabs
+    onSharedActionStateChange((newState, oldState) => {
+        if (newState) {
+            // Action started on another page
+            setState('actions.inProgress', true);
+            setState('actions.server', {
+                guid: newState.guid,
+                host: newState.host,
+                service: newState.service
+            });
+            setState('actions.action', newState.action);
+            setState('actions.expectedStatus', newState.action === 'stop' ? 'stopped' : 'running');
+            renderView();
+        } else if (oldState && !newState) {
+            // Action completed on another page
+            setState('actions.inProgress', false);
+            setState('actions.server', null);
+            setState('actions.action', null);
+            renderView();
+            // Refresh to get latest server states
+            loadServers();
+        }
+    });
+
+    // View toggle with debouncing - cache buttons on first use
     let viewToggleInProgress = false;
-    document.querySelectorAll('.view-toggle-btn').forEach(btn => {
+    const viewToggleBtns = document.querySelectorAll('.view-toggle-btn');
+    
+    viewToggleBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             if (viewToggleInProgress) return;
             
             viewToggleInProgress = true;
-            document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
+            viewToggleBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            currentView = btn.dataset.view;
+            setState('view', btn.dataset.view);
             renderView();
             
             // Reset flag after render
