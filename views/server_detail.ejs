@@ -19,6 +19,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/htmlmixed/htmlmixed.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/yaml/yaml.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.3.0/luxon.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-luxon/1.3.1/chartjs-adapter-luxon.min.js"></script>
     <script src="/assets/common.js"></script>
 </head>
@@ -1037,6 +1038,7 @@
                     
                     if (btn.dataset.tab === 'stats') {
                         loadMetrics();
+                        startMetricsAutoRefresh();
                     } else if (btn.dataset.tab === 'files') {
                         loadFiles(currentPath);
                     } else if (btn.dataset.tab === 'backups') {
@@ -1054,6 +1056,11 @@
                             logsStreamRequest.cancel();
                             logsStreamRequest = null;
                         }
+                    }
+
+                    // If we left the stats tab, stop its auto refresh
+                    if (btn.dataset.tab !== 'stats') {
+                        stopMetricsAutoRefresh();
                     }
                 }
             });
@@ -1708,171 +1715,322 @@
 
         // Load metrics for charts
         let currentMetricsTimeframe = 'hour';
-        
+        let metricsRefreshInterval = null;
+        let metricsLoading = false;
+
+        const timeframeUnitMap = {
+            hour: 'minute',
+            today: 'hour',
+            day: 'hour',
+            week: 'day',
+            month: 'day',
+            '3month': 'week',
+            '6month': 'month',
+            year: 'month'
+        };
+
+        function getTimeUnitForTimeframe(tf) {
+            return timeframeUnitMap[tf] || 'hour';
+        }
+
         async function loadMetricsWithTimeframe(timeframe) {
             currentMetricsTimeframe = timeframe;
-            
-            // Update active button using data attribute instead of event.target
+
+            // Update active button states
             document.querySelectorAll('.timeframe-btn').forEach(btn => {
-                if (btn.getAttribute('data-timeframe') === timeframe) {
-                    btn.classList.add('active');
-                } else {
-                    btn.classList.remove('active');
-                }
+                btn.classList.toggle('active', btn.getAttribute('data-timeframe') === timeframe);
             });
-            
+
             await loadMetrics();
+
+            // Restart auto-refresh if we're on the stats tab
+            if (document.getElementById('stats').classList.contains('active')) {
+                startMetricsAutoRefresh();
+            }
         }
-        
+
         async function loadMetrics() {
+            if (metricsLoading) return; // prevent overlapping requests
+            metricsLoading = true;
             try {
                 const response = await fetch(`/api/metrics/${host}/${service}?timeframe=${currentMetricsTimeframe}`);
                 const result = await response.json();
-                
+
                 if (result.success) {
-                    renderCharts(result.data);
+                    chartManager.update(result.data);
                 }
             } catch (error) {
                 console.error('Error loading metrics:', error);
+            } finally {
+                metricsLoading = false;
             }
         }
 
-        function renderCharts(metrics) {
-            // Destroy existing charts and clear references
-            Object.keys(charts).forEach(key => {
+        function startMetricsAutoRefresh() {
+            stopMetricsAutoRefresh();
+            // Fetch immediately and then every 30 seconds while on stats tab
+            if (!document.getElementById('stats').classList.contains('active')) return;
+            loadMetrics();
+            metricsRefreshInterval = setInterval(() => {
+                if (document.getElementById('stats').classList.contains('active')) {
+                    loadMetrics();
+                } else {
+                    stopMetricsAutoRefresh();
+                }
+            }, 30000);
+        }
+
+        function stopMetricsAutoRefresh() {
+            if (metricsRefreshInterval) {
+                clearInterval(metricsRefreshInterval);
+                metricsRefreshInterval = null;
+            }
+        }
+
+        // Chart manager handles initialization and updates without tearing down DOM
+        const chartManager = {
+            charts: {},
+            initialized: false,
+
+            _showNoData(canvasId, message) {
+                const canvas = document.getElementById(canvasId);
+                const wrapper = canvas.closest('.chart-wrapper');
+                this._hideNoData(canvasId);
+                const overlay = document.createElement('div');
+                overlay.className = 'chart-no-data';
+                overlay.style.cssText = 'position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color: #888; pointer-events:none; font-size: 0.95rem;';
+                overlay.textContent = message || 'No data';
+                wrapper.style.position = 'relative';
+                wrapper.appendChild(overlay);
+            },
+
+            _hideNoData(canvasId) {
+                const canvas = document.getElementById(canvasId);
+                const wrapper = canvas.closest('.chart-wrapper');
+                if (!wrapper) return;
+                const existing = wrapper.querySelector('.chart-no-data');
+                if (existing) existing.remove();
+            },
+
+            init(metrics) {
+                // Only initialize once - ensure prior charts removed
+                this.destroyAll();
+
+                const sorted = (metrics || []).slice().sort((a, b) => a.timestamp - b.timestamp);
+                if (!sorted || sorted.length === 0) {
+                    ['cpuChart','memoryChart','playersChart','statusChart','responseTimeChart'].forEach(id => {
+                        if (document.getElementById(id)) this._showNoData(id, 'No metrics available for the selected timeframe');
+                    });
+                    this.initialized = false;
+                    return;
+                }
+
+                // Detect whether a complete date adapter is available
+                let hasDateAdapter = false;
                 try {
-                    if (charts[key]) {
-                        charts[key].destroy();
+                    const adapters = Chart && (Chart._adapters || Chart.adapters);
+                    const dateAdapter = adapters && (adapters._date || adapters.date);
+                    hasDateAdapter = !!(dateAdapter && (dateAdapter.formats || dateAdapter.parse));
+                } catch (e) {
+                    hasDateAdapter = false;
+                }
+
+                if (!hasDateAdapter) {
+                    console.warn('No complete date adapter found - falling back to index-based x-axis to avoid adapter errors.');
+                }
+
+                // Convert metrics to points (either time-based or index-based)
+                const cpuData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseFloat(m.cpu_usage) || 0} : {x: i, y: parseFloat(m.cpu_usage) || 0});
+                const memoryData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseFloat(m.memory_usage) || 0} : {x: i, y: parseFloat(m.memory_usage) || 0});
+                const playersData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseInt(m.player_count) || 0} : {x: i, y: parseInt(m.player_count) || 0});
+                const statusData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: m.status === 1 ? 1 : 0} : {x: i, y: m.status === 1 ? 1 : 0});
+                const responseTimeData = sorted.map((m, i) => hasDateAdapter ? {x: m.timestamp * 1000, y: parseFloat(m.response_time) || 0} : {x: i, y: parseFloat(m.response_time) || 0});
+
+                // Build options depending on adapter availability
+                const commonOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { mode: 'index', intersect: false }
+                    },
+                    scales: {
+                        x: hasDateAdapter ? {
+                            type: 'time',
+                            time: { unit: getTimeUnitForTimeframe(currentMetricsTimeframe) },
+                            ticks: { autoSkip: true, maxRotation: 0 }
+                        } : {
+                            type: 'linear',
+                            ticks: { maxRotation: 0 }
+                        },
+                        y: { beginAtZero: true }
+                    }
+                };
+
+                try {
+                    // Helper that ensures any existing chart on the canvas is destroyed first
+                    const createChartSafe = (canvasId, cfg) => {
+                        const canvas = document.getElementById(canvasId);
+                        if (!canvas) return null;
+                        const existing = Chart.getChart(canvas);
+                        if (existing) {
+                            try { existing.destroy(); } catch (e) { /* ignore */ }
+                        }
+                        return new Chart(canvas, cfg);
+                    };
+
+                    // CPU
+                    if (document.getElementById('cpuChart')) {
+                        this._hideNoData('cpuChart');
+                        this.charts.cpu = createChartSafe('cpuChart', {
+                            type: 'line',
+                            data: { datasets: [{ label: 'CPU %', data: cpuData, borderColor: '#0096ff', backgroundColor: 'rgba(0,150,255,0.08)', fill: true, tension: 0.4, pointRadius: 0 }]},
+                            options: Object.assign({}, commonOptions, { scales: Object.assign({}, commonOptions.scales, { y: { min: 0, max: 100 } }) })
+                        });
+                    }
+
+                    // Memory
+                    if (document.getElementById('memoryChart')) {
+                        this._hideNoData('memoryChart');
+                        this.charts.memory = createChartSafe('memoryChart', {
+                            type: 'line',
+                            data: { datasets: [{ label: 'Memory MB', data: memoryData, borderColor: '#00d4aa', backgroundColor: 'rgba(0,212,170,0.08)', fill: true, tension: 0.4, pointRadius: 0 }]},
+                            options: commonOptions
+                        });
+                    }
+
+                    // Players
+                    if (document.getElementById('playersChart')) {
+                        this._hideNoData('playersChart');
+                        this.charts.players = createChartSafe('playersChart', {
+                            type: 'line',
+                            data: { datasets: [{ label: 'Players', data: playersData, borderColor: '#ff6b6b', backgroundColor: 'rgba(255,107,107,0.08)', fill: true, stepped: true, pointRadius: 0 }]},
+                            options: commonOptions
+                        });
+                    }
+
+                    // Status
+                    if (document.getElementById('statusChart')) {
+                        this._hideNoData('statusChart');
+                        this.charts.status = createChartSafe('statusChart', {
+                            type: 'line',
+                            data: { datasets: [{ label: 'Status', data: statusData, borderColor: '#ffd93d', backgroundColor: 'rgba(255,217,61,0.08)', fill: true, stepped: true, pointRadius: 0 }]},
+                            options: Object.assign({}, commonOptions, { scales: Object.assign({}, commonOptions.scales, { y: { min: 0, max: 1, ticks: { callback: v => v === 1 ? 'Running' : 'Stopped' } } }) })
+                        });
+                    }
+
+                    // Response Time
+                    if (document.getElementById('responseTimeChart')) {
+                        this._hideNoData('responseTimeChart');
+                        this.charts.responseTime = createChartSafe('responseTimeChart', {
+                            type: 'line',
+                            data: { datasets: [{ label: 'Response (ms)', data: responseTimeData, borderColor: '#b366ff', backgroundColor: 'rgba(179,102,255,0.08)', fill: true, tension: 0.4, pointRadius: 0 }]},
+                            options: commonOptions
+                        });
+                    }
+
+                    this.initialized = true;
+                } catch (err) {
+                    console.error('Error creating charts:', err);
+                }
+            },
+
+            update(metrics) {
+                const sorted = (metrics || []).slice().sort((a, b) => a.timestamp - b.timestamp);
+                if (!sorted || sorted.length === 0) {
+                    // No data - destroy charts and show messages
+                    this.destroyAll();
+                    ['cpuChart','memoryChart','playersChart','statusChart','responseTimeChart'].forEach(id => {
+                        if (document.getElementById(id)) this._showNoData(id, 'No metrics available for the selected timeframe');
+                    });
+                    return;
+                }
+
+                // Convert metrics to timestamp (ms)
+                const cpuData = sorted.map(m => ({x: m.timestamp * 1000, y: parseFloat(m.cpu_usage) || 0}));
+                const memoryData = sorted.map(m => ({x: m.timestamp * 1000, y: parseFloat(m.memory_usage) || 0}));
+                const playersData = sorted.map(m => ({x: m.timestamp * 1000, y: parseInt(m.player_count) || 0}));
+                const statusData = sorted.map(m => ({x: m.timestamp * 1000, y: m.status === 1 ? 1 : 0}));
+                const responseTimeData = sorted.map(m => ({x: m.timestamp * 1000, y: parseFloat(m.response_time) || 0}));
+
+                // Initialize if not already
+                if (!this.initialized) {
+                    this.init(metrics);
+                    return;
+                }
+
+                // Update existing charts in place
+                try {
+                    // If date adapter is absent, we are in index-mode; otherwise update time unit
+                    const adapters = Chart && (Chart._adapters || Chart.adapters);
+                    const dateAdapter = adapters && (adapters._date || adapters.date);
+                    const hasDateAdapter = !!(dateAdapter && (dateAdapter.formats || dateAdapter.parse));
+
+                    if (this.charts.cpu) {
+                        this.charts.cpu.data.datasets[0].data = hasDateAdapter ? cpuData : cpuData.map((d, i) => ({x: i, y: d.y}));
+                        if (hasDateAdapter && this.charts.cpu.options && this.charts.cpu.options.scales && this.charts.cpu.options.scales.x) {
+                            if (this.charts.cpu.options.scales.x.time) this.charts.cpu.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        }
+                        this.charts.cpu.update();
+                    }
+                    if (this.charts.memory) {
+                        this.charts.memory.data.datasets[0].data = hasDateAdapter ? memoryData : memoryData.map((d, i) => ({x: i, y: d.y}));
+                        if (hasDateAdapter && this.charts.memory.options && this.charts.memory.options.scales && this.charts.memory.options.scales.x) {
+                            if (this.charts.memory.options.scales.x.time) this.charts.memory.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        }
+                        this.charts.memory.update();
+                    }
+                    if (this.charts.players) {
+                        this.charts.players.data.datasets[0].data = hasDateAdapter ? playersData : playersData.map((d, i) => ({x: i, y: d.y}));
+                        if (hasDateAdapter && this.charts.players.options && this.charts.players.options.scales && this.charts.players.options.scales.x) {
+                            if (this.charts.players.options.scales.x.time) this.charts.players.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        }
+                        this.charts.players.update();
+                    }
+                    if (this.charts.status) {
+                        this.charts.status.data.datasets[0].data = hasDateAdapter ? statusData : statusData.map((d, i) => ({x: i, y: d.y}));
+                        if (hasDateAdapter && this.charts.status.options && this.charts.status.options.scales && this.charts.status.options.scales.x) {
+                            if (this.charts.status.options.scales.x.time) this.charts.status.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        }
+                        this.charts.status.update();
+                    }
+                    if (this.charts.responseTime) {
+                        this.charts.responseTime.data.datasets[0].data = hasDateAdapter ? responseTimeData : responseTimeData.map((d, i) => ({x: i, y: d.y}));
+                        if (hasDateAdapter && this.charts.responseTime.options && this.charts.responseTime.options.scales && this.charts.responseTime.options.scales.x) {
+                            if (this.charts.responseTime.options.scales.x.time) this.charts.responseTime.options.scales.x.time.unit = getTimeUnitForTimeframe(currentMetricsTimeframe);
+                        }
+                        this.charts.responseTime.update();
                     }
                 } catch (err) {
-                    console.warn(`Error destroying chart ${key}:`, err);
+                    console.error('Error updating charts:', err);
                 }
-            });
-            charts = {}; // Clear the charts object
+            },
 
-            // Sort metrics by timestamp
-            const sortedMetrics = [...metrics].sort((a, b) => a.timestamp - b.timestamp);
-
-            const commonOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { type: 'linear', min: 0 },
-                    y: { beginAtZero: true }
-                }
-            };
-
-            // Group metrics - use index for x-axis instead of timestamp to avoid date adapter
-            const cpuData = sortedMetrics.map((m, i) => ({x: i, y: parseFloat(m.cpu_usage) || 0}));
-            const memoryData = sortedMetrics.map((m, i) => ({x: i, y: parseFloat(m.memory_usage) || 0}));
-            const playersData = sortedMetrics.map((m, i) => ({x: i, y: parseInt(m.player_count) || 0}));
-            const statusData = sortedMetrics.map((m, i) => ({x: i, y: m.status === 1 ? 1 : 0}));
-            const responseTimeData = sortedMetrics.map((m, i) => ({x: i, y: parseFloat(m.response_time) || 0}));
-
-            try {
-                charts.cpu = new Chart(document.getElementById('cpuChart'), {
-                    type: 'line',
-                    data: {
-                        datasets: [{
-                            data: cpuData,
-                            borderColor: '#0096ff',
-                            backgroundColor: 'rgba(0, 150, 255, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 0,
-                            pointHoverRadius: 5
-                        }]
-                    },
-                    options: {
-                        ...commonOptions,
-                        scales: {
-                            ...commonOptions.scales,
-                            y: { beginAtZero: true, max: 100 }
-                        }
-                    }
+            destroyAll() {
+                Object.keys(this.charts).forEach(k => {
+                    try { this.charts[k].destroy(); } catch (e) {}
                 });
-
-                charts.memory = new Chart(document.getElementById('memoryChart'), {
-                    type: 'line',
-                    data: {
-                        datasets: [{
-                            data: memoryData,
-                            borderColor: '#00d4aa',
-                            backgroundColor: 'rgba(0, 212, 170, 0.1)',
-                            fill: true,
-                            tension: 0.4,
-                            pointRadius: 0,
-                            pointHoverRadius: 5
-                        }]
-                    },
-                    options: commonOptions
-                });
-
-                charts.players = new Chart(document.getElementById('playersChart'), {
-                    type: 'line',
-                    data: {
-                        datasets: [{
-                            data: playersData,
-                            borderColor: '#ff6b6b',
-                            backgroundColor: 'rgba(255, 107, 107, 0.1)',
-                            fill: true,
-                            stepped: true,
-                            pointRadius: 0,
-                            pointHoverRadius: 5
-                        }]
-                    },
-                    options: commonOptions
-                });
-
-                charts.status = new Chart(document.getElementById('statusChart'), {
-                    type: 'line',
-                    data: {
-                        datasets: [{
-                            data: statusData,
-                            borderColor: '#ffd93d',
-                            backgroundColor: 'rgba(255, 217, 61, 0.1)',
-                            fill: true,
-                            stepped: true,
-                            pointRadius: 0,
-                            pointHoverRadius: 5
-                        }]
-                    },
-                    options: {
-                        ...commonOptions,
-                        scales: {
-                            ...commonOptions.scales,
-                            y: {
-                                min: 0,
-                                max: 1,
-                                ticks: {
-                                    callback: value => value === 1 ? 'Running' : 'Stopped'
-                                }
-                            }
-                        }
-                    }
-                });
-
-                if (document.getElementById('responseTimeChart')) {
-                    charts.responseTime = new Chart(document.getElementById('responseTimeChart'), {
-                        type: 'line',
-                        data: {
-                            datasets: [{
-                                data: responseTimeData,
-                                borderColor: '#b366ff',
-                                backgroundColor: 'rgba(179, 102, 255, 0.1)',
-                                fill: true,
-                                tension: 0.4,
-                                pointRadius: 0,
-                                pointHoverRadius: 5
-                            }]
-                        },
-                        options: commonOptions
-                    });
-                }
-            } catch (err) {
-                console.error('Error creating charts:', err);
+                this.charts = {};
+                this.initialized = false;
+                // remove any no-data overlays
+                ['cpuChart','memoryChart','playersChart','statusChart','responseTimeChart'].forEach(id => this._hideNoData(id));
             }
+        };
+
+        // When we switch away from stats tab, stop the auto-refresh
+        // Ensure we hook into tab switching (already set up above) - add a safety interval start if the stats tab is active on load
+        if (document.getElementById('stats').classList.contains('active')) {
+            startMetricsAutoRefresh();
+        }
+
+        // Debug logging for chart and adapter presence
+        try {
+            console.log('Chart.js version:', Chart?.version);
+            const adapters = Chart && (Chart._adapters || Chart.adapters);
+            const dateAdapter = adapters && (adapters._date || adapters.date);
+            console.log('Date adapter present:', !!dateAdapter, dateAdapter);
+        } catch (e) {
+            console.warn('Chart/adapters not available at page load:', e);
         }
 
         // File browser
