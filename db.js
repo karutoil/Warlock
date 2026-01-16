@@ -70,6 +70,10 @@ const Metric = sequelize.define('Metric', {
 		type: DataTypes.STRING,
 		allowNull: false
 	},
+	instance_id: {
+		type: DataTypes.STRING,
+		allowNull: true  // Nullable for backward compatibility
+	},
 	service: {
 		type: DataTypes.STRING,
 		allowNull: false
@@ -102,7 +106,44 @@ const Metric = sequelize.define('Metric', {
 }, {
 	indexes: [
 		{ fields: ['ip', 'service', 'timestamp'] },
-		{ fields: ['app_guid', 'service', 'timestamp'] }
+		{ fields: ['app_guid', 'service', 'timestamp'] },
+		{ fields: ['instance_id', 'service', 'timestamp'] }
+	],
+	timestamps: false
+});
+
+// ApplicationInstance model for tracking installed game instances
+const ApplicationInstance = sequelize.define('ApplicationInstance', {
+	instance_id: {
+		type: DataTypes.STRING,
+		primaryKey: true,
+		allowNull: false
+	},
+	app_guid: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	host: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	path: {
+		type: DataTypes.STRING,
+		allowNull: false
+	},
+	instance_name: {
+		type: DataTypes.STRING,
+		allowNull: true
+	},
+	created_at: {
+		type: DataTypes.DATE,
+		allowNull: false,
+		defaultValue: Sequelize.NOW
+	}
+}, {
+	indexes: [
+		{ fields: ['app_guid', 'host'] },
+		{ fields: ['host'] }
 	],
 	timestamps: false
 });
@@ -112,5 +153,6 @@ module.exports = {
 	User,
 	Host,
 	Meta,
-	Metric
+	Metric,
+	ApplicationInstance
 };
