@@ -3,3 +3,6 @@ DEV/
 .env
 .idea/copilot*
 warlock.sqlite
+warlock.sqlite-shm
+.gitignore
+warlock.sqlite-wal

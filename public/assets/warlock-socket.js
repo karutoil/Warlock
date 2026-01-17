@@ -7,6 +7,8 @@
 	'use strict';
 
 	// Initialize socket.io client
+	// Note: Frontend clients don't need auth token - only remote agents do
+	// Backend will not enforce auth middleware for non-agent connections
 	const socket = io({
 		transports: ['websocket', 'polling'],
 		reconnection: true,
