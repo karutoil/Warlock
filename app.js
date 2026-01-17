@@ -434,8 +434,49 @@ server.listen(PORT, HOST, () => {
 	logger.info(`Listening on ${PORT}`);
 
 	// Ensure the sqlite database is up to date with the schema.
-	sequelize.sync({ alter: true }).then(async () => {
-		logger.info('Initialized database connection and synchronized schema.');
+	(async () => {
+		// Cleanup stale Sequelize backup tables that may remain from prior failed schema migrations.
+		try {
+			const [rows] = await sequelize.query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_backup'");
+			if (rows && rows.length > 0) {
+				for (const row of rows) {
+					const tbl = row.name;
+					logger.warn(`Found stale backup table: ${tbl} — dropping to avoid unique constraint errors`);
+					await sequelize.query(`DROP TABLE IF EXISTS \"${tbl}\"`);
+				}
+			}
+		} catch (cleanupErr) {
+			logger.error('Error while cleaning up backup tables before sync:', cleanupErr);
+		}
+
+		// Try to sync, with a single retry on unique constraint errors caused by leftover backup tables
+		try {
+			await sequelize.sync({ alter: true });
+			logger.info('Initialized database connection and synchronized schema.');
+		} catch (err) {
+			// If a UNIQUE constraint against a *_backup table occurred, attempt to drop that specific table and retry once
+			if (err && err.parent && err.parent.sql && err.parent.sql.includes('INSERT INTO') && err.parent.sql.includes('_backup')) {
+				const match = err.parent.sql.match(/INSERT INTO `?([^`\s]+_backup)`?/i);
+				if (match && match[1]) {
+					const offending = match[1].replace(/`/g, '');
+					try {
+						logger.warn(`Sync failed due to existing backup table ${offending} — dropping it and retrying sync`);
+						await sequelize.query(`DROP TABLE IF EXISTS \"${offending}\"`);
+						await sequelize.sync({ alter: true });
+						logger.info('Database sync succeeded after dropping stale backup table.');
+					} catch (retryErr) {
+						logger.error('Retrying database sync failed:', retryErr);
+						throw retryErr;
+					}
+				} else {
+					logger.error('Database sync failed with a unique constraint error but could not determine offending backup table:', err);
+					throw err;
+				}
+			} else {
+				logger.error('Database sync failed:', err);
+				throw err;
+			}
+		}
 
 		// Send a tracking snippet to our analytics server so we can monitor basic usage.
 		push_analytics('Start');
@@ -453,5 +494,5 @@ server.listen(PORT, HOST, () => {
 
 		MetricsMergeTask();
 		setInterval(MetricsMergeTask, 3600000); // Run every hour
-	});
+	})();
 });
