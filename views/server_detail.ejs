@@ -4192,6 +4192,48 @@
                     });
             });
 
+            // Uninstall functionality
+            const uninstallBtn = document.getElementById('uninstallBtn');
+            const uninstallSpinner = document.getElementById('uninstallSpinner');
+            const uninstallIcon = document.getElementById('uninstallIcon');
+            const uninstallOutput = document.getElementById('uninstallOutput');
+
+            uninstallBtn?.addEventListener('click', () => {
+                if (uninstallBtn.classList.contains('disabled')) return;
+
+                showConfirmationModal('Confirm Uninstall', 'This will uninstall the application from this host. This cannot be undone. Are you sure?', async () => {
+                    // User confirmed
+                    uninstallBtn.classList.add('disabled');
+                    uninstallSpinner.style.display = 'inline-block';
+                    uninstallIcon.style.display = 'none';
+                    uninstallOutput.style.display = 'block';
+                    uninstallOutput.textContent = 'Uninstallation started...\n';
+                    showToast('info', 'Uninstallation started. Check the terminal output for progress.');
+
+                    try {
+                        await stream(
+                            `/api/application/${guid}/${host}`,
+                            'DELETE',
+                            {},
+                            null,
+                            (event, data) => {
+                                terminalOutputHelper(uninstallOutput, event, data);
+                            }
+                        );
+
+                        showToast('success', 'Uninstallation process completed.');
+                        // After uninstall, refresh page or navigate back to application page
+                        setTimeout(() => { window.location.href = `/application/${guid}`; }, 1000);
+                    } catch (e) {
+                        showToast('error', 'Uninstallation process encountered an error. See terminal output for details.');
+                    } finally {
+                        uninstallSpinner.style.display = 'none';
+                        uninstallIcon.style.display = 'inline-block';
+                        uninstallBtn.classList.remove('disabled');
+                    }
+                });
+            });
+
             // Close modals on overlay or close button click
             document.querySelectorAll('.modal-close').forEach(btn => {
                 btn.addEventListener('click', function() {

@@ -180,10 +180,51 @@ function renderHost(host, hostData) {
 						agentStatus.style.backgroundColor = 'rgba(255, 193, 7, 0.2)';
 						agentStatus.style.color = '#FFC107';
 					} else {
-						agentStatus.className = 'host-agent-status not-installed';
-						agentStatus.innerHTML = '<i class="fas fa-times-circle"></i> Agent Not Installed';
-						agentStatus.style.backgroundColor = 'rgba(244, 67, 54, 0.2)';
-						agentStatus.style.color = '#F44336';
+						// Agent not installed - try to auto-register it
+						agentStatus.className = 'host-agent-status not-installed registering';
+						agentStatus.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Attempting Auto-Register...';
+						agentStatus.style.backgroundColor = 'rgba(33, 150, 243, 0.2)';
+						agentStatus.style.color = '#2196F3';
+						
+						// Auto-register the agent
+						fetch(`/api/agents/${encodeURIComponent(host)}/register`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' }
+						})
+							.then(r => r.json())
+							.then(regData => {
+								if (regData.success) {
+									agentStatus.className = 'host-agent-status auto-registered';
+									agentStatus.innerHTML = '<i class="fas fa-info-circle"></i> Agent Registered (connecting...)';
+									agentStatus.style.backgroundColor = 'rgba(33, 150, 243, 0.2)';
+									agentStatus.style.color = '#2196F3';
+									
+									// Refresh status after a moment
+									setTimeout(() => {
+										fetch(`/api/agents/${encodeURIComponent(host)}`)
+											.then(r => r.json())
+											.then(refreshData => {
+												if (refreshData.success && refreshData.connected) {
+													agentStatus.className = 'host-agent-status connected';
+													agentStatus.innerHTML = '<i class="fas fa-check-circle"></i> Agent Connected';
+													agentStatus.style.backgroundColor = 'rgba(76, 175, 80, 0.2)';
+													agentStatus.style.color = '#4CAF50';
+												}
+											});
+									}, 2000);
+								} else {
+									agentStatus.className = 'host-agent-status not-installed';
+									agentStatus.innerHTML = '<i class="fas fa-times-circle"></i> Agent Not Installed';
+									agentStatus.style.backgroundColor = 'rgba(244, 67, 54, 0.2)';
+									agentStatus.style.color = '#F44336';
+								}
+							})
+							.catch(err => {
+								agentStatus.className = 'host-agent-status not-installed';
+								agentStatus.innerHTML = '<i class="fas fa-times-circle"></i> Agent Not Installed';
+								agentStatus.style.backgroundColor = 'rgba(244, 67, 54, 0.2)';
+								agentStatus.style.color = '#F44336';
+							});
 					}
 				}
 			})
@@ -192,7 +233,7 @@ function renderHost(host, hostData) {
 				agentStatus.style.backgroundColor = 'rgba(128, 128, 128, 0.2)';
 			});
 		
-		cardBody.insertBefore(agentStatus, actionsContainer);
+		cardBody.appendChild(agentStatus);
 	}
 	
 	// Files Button

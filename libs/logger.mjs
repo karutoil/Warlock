@@ -1,37 +1,71 @@
 /**
  * A simple logger utility that provides debug, info, warn, and error logging methods.
- * Debug messages are only logged in development mode.
+ *
+ * Behavior:
+ * - If `LOG_LEVEL` is set (error|warn|info|debug) it determines which messages are emitted.
+ * - If `LOG_LEVEL` is not set, `NODE_ENV === 'development'` enables `debug`, otherwise `info`.
+ *
+ * Usage examples:
+ *   LOG_LEVEL=info npm run dev    # show info/warn/error
+ *   LOG_LEVEL=debug npm run dev   # show debug/info/warn/error
  */
+
+const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
+
+function getCurrentLevel() {
+	const envLevel = process.env.LOG_LEVEL;
+	if (envLevel) {
+		const name = String(envLevel).toLowerCase();
+		if (Object.prototype.hasOwnProperty.call(LEVELS, name)) {
+			return LEVELS[name];
+		}
+		// If numeric value provided, use it
+		const n = Number(envLevel);
+		if (!Number.isNaN(n)) {
+			return n;
+		}
+	}
+
+	return process.env.NODE_ENV === 'development' ? LEVELS.debug : LEVELS.info;
+}
+
+function prefix(levelName) {
+	return '[' + (new Date()).toISOString() + ']' + ' [' + levelName + ']';
+}
+
 export const logger = {
 	/**
-	 * Log debug messages (only in development mode)
-	 *
-	 * @param args
+	 * Log debug messages
 	 */
 	debug: (...args) => {
-		if (process.env.NODE_ENV === 'development') {
-			console.debug('[' + (new Date()).toISOString() + ']', '[debug]', ...args);
+		if (getCurrentLevel() >= LEVELS.debug) {
+			console.debug(prefix('debug'), ...args);
 		}
 	},
+
 	/**
 	 * Log informational messages
-	 * @param args
 	 */
 	info: (...args) => {
-		console.log('[' + (new Date()).toISOString() + ']', '[info]', ...args);
+		if (getCurrentLevel() >= LEVELS.info) {
+			console.log(prefix('info'), ...args);
+		}
 	},
+
 	/**
 	 * Log warning messages
-	 * @param args
 	 */
 	warn: (...args) => {
-		console.warn('[' + (new Date()).toISOString() + ']', '[warn]', ...args);
+		if (getCurrentLevel() >= LEVELS.warn) {
+			console.warn(prefix('warn'), ...args);
+		}
 	},
+
 	/**
 	 * Log error messages
-	 * @param args
 	 */
 	error: (...args) => {
-		console.error('[' + (new Date()).toISOString() + ']', '[error]', ...args);
-	}
+		if (getCurrentLevel() >= LEVELS.error) {
+			console.error(prefix('error'), ...args);
+		}	}
 };

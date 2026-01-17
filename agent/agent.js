@@ -14,6 +14,10 @@ const os = require('os');
 const CONFIG_FILE = '/etc/warlock/agent.conf';
 const VERSION = '1.0.0';
 
+// Simple in-memory cache for expensive commands (e.g., manage.py --get-services)
+const commandCache = new Map();
+const CACHE_TTL_MS = Number(process.env.WARLOCK_AGENT_CACHE_TTL_MS || 60000); // default 60s
+
 // Load configuration
 let config = {};
 try {
@@ -74,10 +78,28 @@ socket.on('command:exec', async (data, callback) => {
 	const { command, timeout = 30000, cwd } = data;
 	
 	try {
+		// Cache only manage.py service enumeration commands
+		const isServiceList = typeof command === 'string' && command.includes('manage.py') && command.includes('--get-services');
+		if (isServiceList) {
+			const cacheKey = `${cwd || ''}::${command}`;
+			const cached = commandCache.get(cacheKey);
+			if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+				console.log(`[${new Date().toISOString()}] [CACHE] Returning cached result for: ${command}`);
+				return callback({ success: true, ...cached.result });
+			}
+		}
+
 		const result = await executeCommand(command, timeout, cwd);
-		callback({ success: true, ...result });
+
+		// Save to cache on success
+		if (typeof command === 'string' && command.includes('manage.py') && command.includes('--get-services')) {
+			const cacheKey = `${cwd || ''}::${command}`;
+			commandCache.set(cacheKey, { result, timestamp: Date.now() });
+		}
+
+		return callback({ success: true, ...result });
 	} catch (err) {
-		callback({ success: false, error: err.message });
+		return callback({ success: false, error: err.message });
 	}
 });
 

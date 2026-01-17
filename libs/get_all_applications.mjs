@@ -43,7 +43,9 @@ export async function getAllApplications() {
 
 			if (hostList.length === 0) {
 				logger.debug('getAllApplications: No hosts found in database.');
-				return reject(new Error('No hosts found in database.'));
+				// Cache the empty applications list for 1 hour
+				cache.set('all_applications', applications, 3600);
+				return resolve(applications);
 			}
 
 			let promises = [],

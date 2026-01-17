@@ -76,6 +76,12 @@ const {sequelize} = require("./db.js");
 const {MetricsPollTask} = require("./tasks/metrics_poll.mjs");
 const {MetricsMergeTask} = require("./tasks/metrics_merge.mjs");
 
+// Dynamic import for cmd_runner to set global app
+(async () => {
+	const { setGlobalApp } = await import('./libs/cmd_runner.mjs');
+	setGlobalApp(app);
+})();
+
 // Load environment variables
 dotenv.config();
 
@@ -104,6 +110,15 @@ const compression = require('compression');
 app.use(express.json());
 // Enable gzip compression for all responses (improves large log fetches and other API payloads)
 app.use(compression());
+
+// Set Permissions-Policy header to disable disallowed features and suppress browser warnings
+app.use((req, res, next) => {
+	// Explicitly disable all ad/tracking related features and other permissions
+	// This prevents browser warnings about unknown/deprecated features
+	res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), usb=(), browsing-topics=(), run-ad-auction=(), join-ad-interest-group=()');
+	next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 
@@ -175,24 +190,71 @@ const agentSockets = new Map(); // host_ip -> socket
 
 // Agent authentication middleware
 io.use(async (socket, next) => {
-	const { token, version, hostname } = socket.handshake.auth;
+	const { token, version, hostname, host_ip } = socket.handshake.auth;
 	
+	// Only enforce token authentication if a token is provided (agent connections)
+	// Frontend web clients connect without auth tokens
 	if (!token) {
-		return next(new Error('Authentication token required'));
+		// This is a frontend client, not an agent - allow connection
+		socket.isAgent = false;
+		return next();
 	}
 
 	try {
 		// Verify token exists in database
-		const agent = await AgentConnection.findOne({ where: { agent_token: token } });
+		let agent = await AgentConnection.findOne({ where: { agent_token: token } });
 		
 		if (!agent) {
-			logger.warn(`Agent authentication failed: Invalid token from ${socket.handshake.address}`);
-			return next(new Error('Invalid authentication token'));
+			// Token not found - try to auto-register the agent if host_ip is provided
+			if (host_ip) {
+				logger.warn(`[AUTO-REGISTER] Agent with invalid token connecting from ${host_ip}. Creating database record...`);
+				
+				try {
+					// Check if agent already exists by host_ip
+					agent = await AgentConnection.findOne({ where: { host_ip: host_ip } });
+					
+					if (!agent) {
+						// Create new agent connection with new token
+						const newToken = crypto.randomBytes(32).toString('hex');
+						agent = await AgentConnection.create({
+							host_ip: host_ip,
+							agent_token: newToken,
+							agent_version: version,
+							status: 'disconnected',
+							connected_at: Math.floor(Date.now() / 1000),
+							last_ping: Math.floor(Date.now() / 1000)
+						});
+						logger.info(`[AUTO-REGISTER] Agent auto-registered: ${host_ip} - New token generated`);
+						
+						// Tell agent to use new token on reconnect
+						socket.emit('agent:token-update', { 
+							new_token: newToken,
+							message: 'Agent auto-registered. Please restart with new token.'
+						});
+						
+						return next(new Error('New token issued - reconnect with updated token'));
+					} else {
+						// Agent exists, update its token to the one it tried to use
+						// This handles case where agent was manually installed
+						logger.warn(`[AUTO-REGISTER] Agent ${host_ip} exists but token mismatch. Updating token...`);
+						agent.agent_token = token;
+						agent.agent_version = version;
+						await agent.save();
+					}
+				} catch (regErr) {
+					logger.error(`[AUTO-REGISTER] Failed to auto-register agent ${host_ip}:`, regErr);
+					return next(new Error('Failed to auto-register agent'));
+				}
+			} else {
+				logger.warn(`Agent authentication failed: Invalid token from ${socket.handshake.address}`);
+				return next(new Error('Invalid authentication token'));
+			}
 		}
 
 		// Attach agent info to socket
+		socket.isAgent = true;
 		socket.agentHostIp = agent.host_ip;
-		socket.agentVersion = version;
+		socket.agentVersion = version || agent.agent_version;
 		socket.agentHostname = hostname;
 		
 		next();
@@ -205,6 +267,11 @@ io.use(async (socket, next) => {
 // Agent connection handler
 io.on('connection', async (socket) => {
 	const hostIp = socket.agentHostIp;
+	
+	// Only process agent-specific logic for actual agents
+	if (!socket.isAgent) {
+		return;
+	}
 	
 	logger.info(`Agent connected: ${hostIp} (${socket.agentHostname}) v${socket.agentVersion}`);
 	
@@ -292,6 +359,41 @@ io.on('connection', async (socket) => {
 			logger.error(`Failed to update disconnect status for ${hostIp}:`, err);
 		}
 	});
+});
+
+// Handle agent connection errors and auto-register them
+io.engine.on('connection_error', async (err) => {
+	// Extract host_ip from error context if available
+	const address = err.request?.socket?.remoteAddress || err.request?.remoteAddress;
+	
+	if (err.message && err.message.includes('Invalid authentication token')) {
+		logger.warn(`[AUTO-REGISTER] Connection error from ${address}: ${err.message}`);
+		
+		// Try to extract and auto-register the agent from the failed connection
+		if (address) {
+			const hostIp = address.replace('::ffff:', ''); // Handle IPv6-wrapped IPv4
+			
+			try {
+				// Check if agent exists by host_ip
+				let agent = await AgentConnection.findOne({ where: { host_ip: hostIp } });
+				
+				if (!agent) {
+					// Create new agent connection
+					const newToken = crypto.randomBytes(32).toString('hex');
+					agent = await AgentConnection.create({
+						host_ip: hostIp,
+						agent_token: newToken,
+						status: 'disconnected',
+						connected_at: Math.floor(Date.now() / 1000),
+						last_ping: Math.floor(Date.now() / 1000)
+					});
+					logger.info(`[AUTO-REGISTER] Agent auto-registered from failed connection: ${hostIp}`);
+				}
+			} catch (regErr) {
+				logger.error(`[AUTO-REGISTER] Failed to auto-register from connection error:`, regErr);
+			}
+		}
+	}
 });
 
 // Helper function to execute command on agent via WebSocket

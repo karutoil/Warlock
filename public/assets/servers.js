@@ -120,7 +120,25 @@ function validateServicesResponse(result) {
         }
         return true;
     });
-    return validServers;
+
+    // Deduplicate client-side as a safety net (app_guid + host + service)
+    const seen = new Set();
+    const uniqueServers = [];
+    const duplicates = [];
+    for (const s of validServers) {
+        const key = `${s.app}_${s.host.host}_${s.service.service}`;
+        if (seen.has(key)) {
+            duplicates.push(key);
+            continue;
+        }
+        seen.add(key);
+        uniqueServers.push(s);
+    }
+    if (duplicates.length > 0) {
+        console.warn(`[clientside] validateServicesResponse: Removed ${duplicates.length} duplicate services`);
+    }
+
+    return uniqueServers;
 }
 
 /**
@@ -361,29 +379,45 @@ function loadServers() {
 
     setState('isLoading', true);
     
+    const t0 = performance.now();
+    console.log('[PERF] Frontend: Starting server list fetch');
+    
     fetch('/api/services', {method: 'GET'})
-        .then(r => r.json())
+        .then(r => {
+            const t1 = performance.now();
+            console.log(`[PERF] Frontend: Network request completed in ${(t1 - t0).toFixed(2)}ms`);
+            return r.json();
+        })
         .then(result => {
-            try {
-                // Validate response structure
-                if (!result.success) {
-                    throw new Error(result.error || 'API returned success: false');
-                }
-                
-                // Validate and filter servers
-                const validServers = validateServicesResponse(result);
-                setState('servers', validServers);
-                renderView();
-            } catch (error) {
-                console.error('Error validating servers response:', error);
-                // Preserve previous server state on error
-                if (AppState.servers.length === 0) {
-                    showToast('error', `Failed to load servers: ${error.message}`);
-                    renderView(); // Render empty state
-                }
+            const t2 = performance.now();
+            console.log(`[PERF] Frontend: JSON parsing completed in ${(t2 - t0).toFixed(2)}ms`);
+            if (result._timings) {
+                console.log(`[PERF] Backend: ${JSON.stringify(result._timings)}`);
             }
+            
+            // Validate response structure
+            if (!result.success) {
+                throw new Error(result.error || 'API returned success: false');
+            }
+            
+            // Validate and filter servers
+            const t3 = performance.now();
+            const validServers = validateServicesResponse(result);
+            const t4 = performance.now();
+            console.log(`[PERF] Frontend: Validation completed in ${(t4 - t3).toFixed(2)}ms`);
+            
+            setState('servers', validServers);
+            const t5 = performance.now();
+            console.log(`[PERF] Frontend: State update completed in ${(t5 - t4).toFixed(2)}ms`);
+            
+            renderView();
+            const t6 = performance.now();
+            console.log(`[PERF] Frontend: Rendering completed in ${(t6 - t5).toFixed(2)}ms`);
+            console.log(`[PERF] Frontend: Total load time ${(t6 - t0).toFixed(2)}ms`);
         })
         .catch(error => {
+            const t7 = performance.now();
+            console.error(`[PERF] Frontend: Error after ${(t7 - t0).toFixed(2)}ms:`, error);
             console.error('Error loading servers:', error);
             // Preserve previous server state on error
             if (AppState.servers.length === 0) {
