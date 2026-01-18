@@ -7,6 +7,7 @@ const {logger} = require("../../libs/logger.mjs");
 const {getAllApplications} = require("../../libs/get_all_applications.mjs");
 const {getApplicationMetrics} = require("../../libs/get_application_metrics.mjs");
 const {cmdRunner} = require("../../libs/cmd_runner.mjs");
+const {clearCache} = require("../../libs/cache.mjs");
 
 const router = express.Router();
 
@@ -120,6 +121,75 @@ router.get('/stream/:guid/:host/:service', validate_session, (req, res) => {
 			success: false,
 			error: e.message,
 			service: []
+		});
+	});
+});
+
+/**
+ * DELETE /api/service/:guid/:host/:service
+ * Uninstall a specific service instance
+ */
+router.delete('/:guid/:host/:service', validate_session, (req, res) => {
+	const {guid, host, service} = req.params;
+
+	if (!guid || !host || !service) {
+		return res.status(400).json({ success: false, error: 'Missing guid, host, or service' });
+	}
+
+	validateHostService(host, guid, service).then(async data => {
+		try {
+			logger.info(`Uninstalling service ${service} for application ${guid} on host ${host}`);
+
+			// Check if this is the last service for this application on this host
+			const allServices = await getApplicationServices(data.app, data.host);
+			const serviceCount = Object.keys(allServices).length;
+
+			if (serviceCount <= 1) {
+				// This is the last service, so we should uninstall the entire application
+				return res.status(400).json({
+					success: false,
+					error: 'This is the last service for this application. Use "Uninstall Entire Application" instead to remove all files.'
+				});
+			}
+
+			// Stop the service first
+			await cmdRunner(host, `systemctl stop ${service}.service`).catch(() => {});
+
+			// Disable the service
+			await cmdRunner(host, `systemctl disable ${service}.service`).catch(() => {});
+
+			// Remove the systemd service file
+			await cmdRunner(host, `rm -f /etc/systemd/system/${service}.service`);
+
+			// Reload systemd daemon
+			await cmdRunner(host, `systemctl daemon-reload`);
+
+			// Remove the service-specific data directory if it exists
+			// This is typically at ${data.host.path}/servers/${service}
+			const serviceDataPath = `${data.host.path}/servers/${service}`;
+			await cmdRunner(host, `rm -rf "${serviceDataPath}"`);
+
+			// Clear cache
+			clearCache();
+
+			logger.info(`Successfully uninstalled service ${service}`);
+
+			return res.json({
+				success: true,
+				message: `Service ${service} has been uninstalled successfully.`
+			});
+
+		} catch (err) {
+			logger.error(`Error uninstalling service ${service}: ${err.message}`);
+			return res.status(500).json({
+				success: false,
+				error: err.message
+			});
+		}
+	}).catch(e => {
+		return res.status(400).json({
+			success: false,
+			error: e.message
 		});
 	});
 });

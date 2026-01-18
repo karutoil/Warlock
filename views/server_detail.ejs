@@ -117,6 +117,38 @@
         </div>
     </div>
 
+    <!-- Uninstall Terminal Output Modal -->
+    <div id="uninstallModal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-trash"></i> Uninstall Application</h3>
+                <button class="modal-close" onclick="closeUninstallModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="warning-message" style="margin-bottom: 1rem;">
+                    <p>
+                        This will permanently remove the entire application and ALL associated data including game saves, 
+                        configurations, and all service instances from this host.
+                    </p>
+                </div>
+                <pre class="terminal" id="uninstallTerminalOutput" style="display:none;"><code></code></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="action-remove" id="confirmUninstallBtn">
+                    <i class="fas fa-trash"></i>
+                    Start Uninstall
+                </button>
+                <button class="action-cancel" onclick="closeUninstallModal()">
+                    <i class="fas fa-times"></i>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Generic Input Modal for File Operations -->
     <div id="fileActionModal" class="modal">
         <div class="modal-overlay"></div>
@@ -2796,6 +2828,106 @@
             closeConfirmationModal();
         }
 
+        // Uninstall Modal and Handlers
+        function closeUninstallModal() {
+            const modal = document.getElementById('uninstallModal');
+            modal.classList.remove('show');
+        }
+
+        function handleUninstallService() {
+            const serviceName = AppState.server.data?.service?.name || service;
+            const status = AppState.server.data?.service?.status;
+            
+            if (status === 'running') {
+                showToast('error', 'Please stop the service before uninstalling it.');
+                return;
+            }
+
+            showConfirmationModal(
+                'Uninstall Service',
+                `Are you sure you want to uninstall the service "${serviceName}"? This will permanently delete all data for this service instance including saves and configurations. This cannot be undone.`,
+                async () => {
+                    const uninstallBtn = document.getElementById('uninstallServiceBtn');
+                    const originalHTML = uninstallBtn.innerHTML;
+                    
+                    uninstallBtn.disabled = true;
+                    uninstallBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uninstalling...';
+
+                    try {
+                        const response = await fetch(`/api/service/${guid}/${host}/${service}`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success) {
+                            showToast('success', 'Service uninstalled successfully. Redirecting...');
+                            setTimeout(() => {
+                                window.location.href = '/servers';
+                            }, 2000);
+                        } else {
+                            showToast('error', result.error || 'Failed to uninstall service');
+                            uninstallBtn.disabled = false;
+                            uninstallBtn.innerHTML = originalHTML;
+                        }
+                    } catch (error) {
+                        showToast('error', 'Error uninstalling service: ' + error.message);
+                        uninstallBtn.disabled = false;
+                        uninstallBtn.innerHTML = originalHTML;
+                    }
+                }
+            );
+        }
+
+        function handleUninstallApplication() {
+            const status = AppState.server.data?.service?.status;
+            
+            if (status === 'running') {
+                showToast('error', 'Please stop the service before uninstalling the application.');
+                return;
+            }
+
+            const modal = document.getElementById('uninstallModal');
+            const terminalOutput = document.getElementById('uninstallTerminalOutput');
+            const confirmBtn = document.getElementById('confirmUninstallBtn');
+            
+            // Reset modal state
+            terminalOutput.innerHTML = '';
+            terminalOutput.style.display = 'none';
+            confirmBtn.style.display = 'inline-block';
+            
+            modal.classList.add('show');
+
+            confirmBtn.onclick = async () => {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uninstalling...';
+                terminalOutput.innerHTML = '';
+                terminalOutput.style.display = 'block';
+
+                try {
+                    await stream(
+                        `/api/application/${guid}/${host}`,
+                        'DELETE',
+                        {},
+                        null,
+                        (event, data) => {
+                            terminalOutputHelper(terminalOutput, event, data);
+                        }
+                    );
+                    
+                    showToast('success', 'Application uninstalled successfully. Redirecting...');
+                    setTimeout(() => {
+                        window.location.href = '/servers';
+                    }, 2000);
+                } catch (error) {
+                    showToast('error', 'Uninstallation encountered an error. Check terminal output for details.');
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerHTML = '<i class="fas fa-trash"></i> Retry Uninstall';
+                }
+            };
+        }
+
         // Allow Enter key to confirm
         document.getElementById('fileActionInput')?.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -3328,6 +3460,29 @@
             `;
             serverSettingsDiv.appendChild(reinstallSection);
 
+            // Uninstall Section
+            const uninstallSection = document.createElement('div');
+            uninstallSection.innerHTML = `
+                <h5 style="margin-top: 1.5rem; margin-bottom: 1rem;"><i class="fas fa-trash"></i> Uninstall</h5>
+                <div class="warning-message" style="margin-bottom: 1rem;">
+                    <p>
+                        <strong>DANGER ZONE</strong><br/>
+                        Uninstalling will permanently remove data and cannot be undone. Make sure you have backups if needed.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="uninstallServiceBtn" class="link-control action-remove disabled">
+                        <i class="fas fa-trash"></i>
+                        Uninstall This Service
+                    </button>
+                    <button id="uninstallApplicationBtn" class="link-control action-remove disabled">
+                        <i class="fas fa-trash-alt"></i>
+                        Uninstall Entire Application & Files
+                    </button>
+                </div>
+            `;
+            serverSettingsDiv.appendChild(uninstallSection);
+
             // Load automatic updates and restarts configuration
             loadAutomaticUpdates();
             loadAutomaticRestarts();
@@ -3339,6 +3494,16 @@
             document.getElementById('reinstallBtn').addEventListener('click', () => {
                 window.location.href = `/application/install/${guid}/${host}`;
             });
+
+            // Enable and setup uninstall buttons
+            const uninstallServiceBtn = document.getElementById('uninstallServiceBtn');
+            const uninstallApplicationBtn = document.getElementById('uninstallApplicationBtn');
+            
+            uninstallServiceBtn.classList.remove('disabled');
+            uninstallApplicationBtn.classList.remove('disabled');
+            
+            uninstallServiceBtn.addEventListener('click', handleUninstallService);
+            uninstallApplicationBtn.addEventListener('click', handleUninstallApplication);
 
             // Setup event listeners
             document.getElementById('openUpdateBtn').addEventListener('click', () => {
